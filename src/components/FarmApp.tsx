@@ -50,7 +50,7 @@ import {
   getEggChartData,
   getReportRows,
 } from "@/lib/calculations";
-import { createDemoFarmState } from "@/lib/demo-data";
+import { createFreshFarmState } from "@/lib/demo-data";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
 import type {
   Coop,
@@ -121,7 +121,7 @@ const expenseCategories: Expense["category"][] = [
 ];
 
 export default function FarmApp() {
-  const [state, setState] = useState<FarmState>(() => createDemoFarmState());
+  const [state, setState] = useState<FarmState>(() => createFreshFarmState());
   const [loaded, setLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [moreSection, setMoreSection] = useState<MoreSectionKey>("inventory");
@@ -283,6 +283,7 @@ export default function FarmApp() {
   function handleResetDemoData() {
     updateState(resetFarmState());
     setActiveTab("dashboard");
+    setAuthMessage("Fresh real-data workspace ready. Old demo entries are cleared.");
   }
 
   if (!loaded) {
@@ -1863,7 +1864,7 @@ function ReportsSection({
             onClick={onReset}
           >
             <RefreshCw size={19} />
-            Reset demo
+            Start fresh
           </button>
         </div>
       </Card>

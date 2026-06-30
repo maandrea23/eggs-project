@@ -3,6 +3,80 @@ import type { FarmState } from "./types";
 
 const isoDay = (date: Date) => format(date, "yyyy-MM-dd");
 
+export function createFreshFarmState(): FarmState {
+  return {
+    coops: [
+      {
+        id: "coop-1",
+        name: "Coop 1",
+        capacity: 130,
+        hens: 0,
+        chicks: 0,
+        notes: "",
+      },
+      {
+        id: "coop-2",
+        name: "Coop 2",
+        capacity: 130,
+        hens: 0,
+        chicks: 0,
+        notes: "",
+      },
+    ],
+    birdMovements: [],
+    eggLogs: [],
+    sales: [],
+    feedPurchases: [],
+    feedUsage: [],
+    expenses: [],
+    inventoryItems: [
+      {
+        id: "inv-feed",
+        name: "Feed stock",
+        category: "feed",
+        quantity: 0,
+        unit: "kg",
+        reorderLevel: 90,
+      },
+      {
+        id: "inv-medicine",
+        name: "General medicine",
+        category: "medicine",
+        quantity: 0,
+        unit: "bottles",
+        reorderLevel: 2,
+      },
+      {
+        id: "inv-vaccine",
+        name: "Vaccines",
+        category: "vaccines",
+        quantity: 0,
+        unit: "doses",
+        reorderLevel: 20,
+      },
+      {
+        id: "inv-cleaning",
+        name: "Cleaning supplies",
+        category: "cleaning",
+        quantity: 0,
+        unit: "items",
+        reorderLevel: 4,
+      },
+      {
+        id: "inv-packaging",
+        name: "Carton packaging",
+        category: "packaging",
+        quantity: 0,
+        unit: "cartons",
+        reorderLevel: 40,
+      },
+    ],
+    healthRecords: [],
+    maintenanceTasks: [],
+    offlineQueue: [],
+  };
+}
+
 export function createDemoFarmState(): FarmState {
   const today = new Date();
   const eggLogs = Array.from({ length: 21 }, (_, index) => {
