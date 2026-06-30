@@ -1,6 +1,6 @@
 # Brianna Eggs Farm Manager
 
-Mobile-first poultry farm management MVP for one small egg farm with 2 automated coops, about 250 hens, COP money tracking, demo data, offline daily logging, charts, CSV/PDF exports, and Supabase-ready auth/database setup.
+Mobile-first poultry farm management MVP for one small egg farm with 2 automated coops, about 250 hens, COP money tracking, demo data, offline daily logging, charts, CSV/PDF exports, and Dailey database sync.
 
 ## Run It Locally
 
@@ -26,13 +26,13 @@ Mobile-first poultry farm management MVP for one small egg farm with 2 automated
 
    [http://localhost:3000](http://localhost:3000)
 
-5. Click **Demo Login**.
+5. Click **Owner Mode**.
 
-The demo mode saves data in this browser with `localStorage`, so daily egg logs keep working even when the internet is unavailable after the app has loaded.
+The owner mode saves data in this browser with `localStorage`, so daily egg logs keep working even when the internet is unavailable after the app has loaded.
 
 ## What Is Included
 
-- Login screen with demo mode and optional Supabase email/password auth.
+- Owner-mode login screen for the internal farm tool.
 - Dashboard for birds, hens, coops, eggs collected, cartons of 30, loose eggs, feed stock, sales, expenses, and profit in COP.
 - Coop management for names, capacity, hens, chicks, bird moves, deaths, removals, and new birds.
 - Fast daily egg logging for Coop 1, Coop 2, cracked eggs, cartons, loose eggs, and notes.
@@ -43,31 +43,32 @@ The demo mode saves data in this browser with `localStorage`, so daily egg logs 
 - Basic reports with charts, CSV export, and PDF export.
 - Demo data for 2 coops and 250 hens.
 
-## Connect Supabase
+## Dailey Database
 
-1. Create a Supabase project.
+The app is set up to use Dailey's managed database when deployed.
 
-2. Open the Supabase SQL Editor.
+1. Dailey should run the project with the `docker-compose.yml` file in this repo.
 
-3. Copy the contents of:
+2. The `db` service tells Dailey to provision a managed MySQL database for this app.
 
-   ```bash
-   supabase/setup.sql
+3. The app reads database credentials from `DATABASE_URL`, `MYSQL_URL`, or standard MySQL environment variables.
+
+4. The app creates its first table automatically:
+
+   ```sql
+   farm_state
    ```
 
-4. Paste it into the SQL Editor and run it.
-
-5. Copy `.env.example` to `.env.local`:
+5. For local database testing, copy `.env.example` to `.env.local`:
 
    ```bash
    cp .env.example .env.local
    ```
 
-6. Fill in your Supabase project values:
+6. Add a local MySQL connection string only if you want to test the database API locally:
 
    ```bash
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
-   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+   DATABASE_URL=mysql://user:password@localhost:3306/eggs_project
    ```
 
 7. Restart the local server:
@@ -76,14 +77,11 @@ The demo mode saves data in this browser with `localStorage`, so daily egg logs 
    npm run dev
    ```
 
-8. Use **Create User** or **Supabase Sign In** on the login screen.
-
 ## Important Notes
 
-- Never put a Supabase `service_role` key in `NEXT_PUBLIC_` variables. Browser code must only use a publishable/anon-style public key.
-- `supabase/setup.sql` enables Row Level Security on every public table.
-- The current MVP keeps the main farm data local for speed and offline use. Unsynced offline actions can be pushed into the Supabase `offline_sync_queue` table when Supabase is configured.
-- A future version should add a full Supabase repository layer that reads/writes every farm table directly after selecting the owner farm.
+- The current MVP keeps an offline copy in the browser for speed and daily farm use.
+- When Dailey database credentials are available, the app mirrors the full farm state into the `farm_state` table.
+- A future version should split the JSON state into normalized tables for coops, egg logs, sales, feed, expenses, inventory, health, and reminders.
 
 ## Main Files
 
@@ -92,5 +90,6 @@ The demo mode saves data in this browser with `localStorage`, so daily egg logs 
 - `src/lib/demo-data.ts` - seed/demo farm records.
 - `src/lib/calculations.ts` - dashboard, report, alert, and insight calculations.
 - `src/lib/local-store.ts` - offline localStorage persistence.
-- `src/lib/supabase-client.ts` - browser Supabase client helper.
-- `supabase/setup.sql` - database tables, grants, and RLS policies.
+- `src/lib/dailey-db.ts` - server-side Dailey MySQL persistence.
+- `src/app/api/farm-state/route.ts` - API route for reading and saving farm state.
+- `docker-compose.yml` - Dailey app plus managed database service.

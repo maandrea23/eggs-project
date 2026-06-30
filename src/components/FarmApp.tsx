@@ -52,10 +52,6 @@ import {
 } from "@/lib/calculations";
 import { createDemoFarmState } from "@/lib/demo-data";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
-import {
-  createSupabaseBrowserClient,
-  hasSupabaseConfig,
-} from "@/lib/supabase-client";
 import type {
   Coop,
   Expense,
@@ -74,15 +70,31 @@ type TabKey =
 
 type MoreSectionKey = "inventory" | "health" | "reports";
 
-type UserMode = "guest" | "supabase";
+type UserMode = "guest";
 type OrganicTone = "moss" | "harvest" | "clay" | "plum";
 type ThemeMode = "daylight" | "nighttime";
+type DatabaseStatus = "checking" | "ready" | "local";
 
 const todayIso = () => format(new Date(), "yyyy-MM-dd");
 const nowIso = () => new Date().toISOString();
 const THEME_KEY = "brianna-egg-theme-mode";
 const makeId = (prefix: string) =>
   `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Date.now()}`;
+
+async function saveFarmStateToDailey(state: FarmState) {
+  const response = await fetch("/api/farm-state", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state }),
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(body?.error || "Dailey database save failed.");
+  }
+}
 
 const tabs: { id: TabKey; label: string; icon: React.ComponentType<{ size?: number }> }[] =
   [
@@ -120,8 +132,8 @@ export default function FarmApp() {
   const [online, setOnline] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>("daylight");
-
-  const supabaseConfigured = hasSupabaseConfig();
+  const [databaseStatus, setDatabaseStatus] =
+    useState<DatabaseStatus>("checking");
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
@@ -134,9 +146,32 @@ export default function FarmApp() {
         document.documentElement.dataset.theme = "daylight";
       }
 
-      setState(loadFarmState());
+      const localState = loadFarmState();
+      setState(localState);
       setLoaded(true);
       setOnline(navigator.onLine);
+
+      fetch("/api/farm-state")
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Dailey database is not ready yet.");
+          }
+
+          return (await response.json()) as { state: FarmState | null };
+        })
+        .then(({ state: databaseState }) => {
+          if (databaseState) {
+            setState(databaseState);
+            saveFarmState(databaseState);
+          } else {
+            void saveFarmStateToDailey(localState);
+          }
+
+          setDatabaseStatus("ready");
+        })
+        .catch(() => {
+          setDatabaseStatus("local");
+        });
     }, 0);
 
     const handleOnline = () => setOnline(true);
@@ -171,6 +206,25 @@ export default function FarmApp() {
 
   function updateState(next: FarmState) {
     setState(next);
+    saveFarmState(next);
+
+    if (!navigator.onLine) {
+      setDatabaseStatus("local");
+      return;
+    }
+
+    void saveFarmStateToDailey(next)
+      .then(() => {
+        setDatabaseStatus("ready");
+      })
+      .catch((error) => {
+        setDatabaseStatus("local");
+        setAuthMessage(
+          error instanceof Error
+            ? `Dailey sync paused: ${error.message}`
+            : "Dailey sync paused. Local offline storage is still active.",
+        );
+      });
   }
 
   function queueOfflineItem(
@@ -186,77 +240,31 @@ export default function FarmApp() {
     };
   }
 
-  async function handleSupabaseAuth(mode: "sign-in" | "sign-up") {
-    setAuthMessage("");
-
-    if (!supabaseConfigured) {
-      setAuthMessage(
-        "Supabase is not connected yet. Use Demo Login now, then add .env.local later.",
-      );
-      return;
-    }
-
-    const supabase = createSupabaseBrowserClient();
-
-    if (!supabase) {
-      return;
-    }
-
-    const response =
-      mode === "sign-in"
-        ? await supabase.auth.signInWithPassword({
-            email: authEmail,
-            password: authPassword,
-          })
-        : await supabase.auth.signUp({
-            email: authEmail,
-            password: authPassword,
-          });
-
-    if (response.error) {
-      setAuthMessage(response.error.message);
-      return;
-    }
-
-    setUserMode("supabase");
+  function handleDemoLogin() {
+    setUserMode("guest");
     setAuthMessage(
-      mode === "sign-up"
-        ? "Account created. Check Supabase email settings if confirmation is required."
-        : "Signed in with Supabase.",
+      databaseStatus === "ready"
+        ? "Owner mode active. Data saves on this device and syncs to Dailey."
+        : "Owner mode active. Data saves on this device until Dailey is connected.",
     );
   }
 
-  function handleDemoLogin() {
-    setUserMode("guest");
-    setAuthMessage("Demo login active. Your data saves on this device.");
-  }
-
   async function syncOfflineQueue() {
-    if (!online || !supabaseConfigured || state.offlineQueue.length === 0) {
+    if (!online) {
       return;
     }
 
     setSyncing(true);
-    const supabase = createSupabaseBrowserClient();
 
-    if (!supabase) {
-      setSyncing(false);
-      return;
-    }
-
-    const unsynced = state.offlineQueue.filter((item) => !item.syncedAt);
-    const { error } = await supabase.from("offline_sync_queue").insert(
-      unsynced.map((item) => ({
-        id: item.id,
-        table_name: item.tableName,
-        action: item.action,
-        payload: item.payload,
-        created_at: item.createdAt,
-      })),
-    );
-
-    if (error) {
-      setAuthMessage(`Sync failed: ${error.message}`);
+    try {
+      await saveFarmStateToDailey(state);
+    } catch (error) {
+      setAuthMessage(
+        error instanceof Error
+          ? `Dailey sync failed: ${error.message}`
+          : "Dailey sync failed. Local offline storage is still active.",
+      );
+      setDatabaseStatus("local");
       setSyncing(false);
       return;
     }
@@ -267,7 +275,8 @@ export default function FarmApp() {
         item.syncedAt ? item : { ...item, syncedAt: nowIso() },
       ),
     });
-    setAuthMessage("Offline entries synced to Supabase queue.");
+    setAuthMessage("Offline entries synced to the Dailey database.");
+    setDatabaseStatus("ready");
     setSyncing(false);
   }
 
@@ -323,8 +332,8 @@ export default function FarmApp() {
             </div>
             <h2 className="text-xl font-black">Welcome back</h2>
             <p className="mt-1 text-sm leading-6 text-[var(--muted)]">
-              Use demo login now. Supabase sign-in is ready when your project
-              keys are added.
+              Use owner mode for now. Dailey database sync runs in the
+              deployed app, while this device keeps an offline copy.
             </p>
 
             <label className="mt-5 block text-sm font-black">Email</label>
@@ -355,29 +364,21 @@ export default function FarmApp() {
                 onClick={handleDemoLogin}
               >
                 <Home size={20} />
-                Demo Login
+                Owner Mode
               </button>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  className="secondary-button h-12 px-4 text-sm"
-                  onClick={() => void handleSupabaseAuth("sign-in")}
-                >
-                  Supabase Sign In
-                </button>
-                <button
-                  className="secondary-button h-12 px-4 text-sm"
-                  onClick={() => void handleSupabaseAuth("sign-up")}
-                >
-                  Create User
-                </button>
-              </div>
             </div>
 
             <div className="soft-panel mt-5 flex items-center gap-2 p-3 text-sm font-bold text-[var(--olive)]">
-              {supabaseConfigured ? <Cloud size={18} /> : <CloudOff size={18} />}
-              {supabaseConfigured
-                ? "Supabase env vars detected."
-                : "Supabase env vars not set. Demo mode still works offline."}
+              {databaseStatus === "ready" ? (
+                <Cloud size={18} />
+              ) : (
+                <CloudOff size={18} />
+              )}
+              {databaseStatus === "checking"
+                ? "Checking Dailey database..."
+                : databaseStatus === "ready"
+                  ? "Dailey database connected."
+                  : "Local offline storage active."}
             </div>
           </div>
         </section>
@@ -451,7 +452,7 @@ export default function FarmApp() {
           <SyncBanner
             online={online}
             queueCount={state.offlineQueue.filter((item) => !item.syncedAt).length}
-            supabaseConfigured={supabaseConfigured}
+            databaseStatus={databaseStatus}
             message={authMessage}
           />
 
@@ -536,12 +537,12 @@ export default function FarmApp() {
 function SyncBanner({
   online,
   queueCount,
-  supabaseConfigured,
+  databaseStatus,
   message,
 }: {
   online: boolean;
   queueCount: number;
-  supabaseConfigured: boolean;
+  databaseStatus: DatabaseStatus;
   message: string;
 }) {
   return (
@@ -556,7 +557,11 @@ function SyncBanner({
       </div>
       <div className="flex items-center gap-2">
         <Settings size={18} />
-        {supabaseConfigured ? "Supabase ready" : "Local demo storage"}
+        {databaseStatus === "ready"
+          ? "Dailey database ready"
+          : databaseStatus === "checking"
+            ? "Checking Dailey database"
+            : "Local offline storage"}
       </div>
       {message ? (
         <p className="soft-panel p-3 text-[var(--clay)] md:col-span-3">
