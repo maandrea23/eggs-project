@@ -28,7 +28,7 @@ import {
   Upload,
   Wallet,
 } from "lucide-react";
-import { readSheet } from "read-excel-file/browser";
+import readXlsxFile from "read-excel-file/browser";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Area,
@@ -84,6 +84,11 @@ type SpreadsheetCell = string | number | boolean | Date | null | undefined;
 
 type ImportedEggLog = FarmState["eggLogs"][number];
 
+type SpreadsheetSheet = {
+  sheet: string;
+  data: SpreadsheetCell[][];
+};
+
 type EggImportResult = {
   entries: ImportedEggLog[];
   skippedRows: number;
@@ -91,13 +96,39 @@ type EggImportResult = {
   detectedColumns: string[];
 };
 
+type FarmImportResult = {
+  source: "andrea-template" | "egg-log";
+  eggLogs: ImportedEggLog[];
+  sales: FarmState["sales"];
+  feedPurchases: FarmState["feedPurchases"];
+  expenses: FarmState["expenses"];
+  investments: FarmState["investments"];
+  healthRecords: FarmState["healthRecords"];
+  coops?: FarmState["coops"];
+  skippedRows: number;
+  warnings: string[];
+  detectedColumns: string[];
+  detectedSheets: string[];
+};
+
 type EggImportSummary = {
   fileName: string;
-  imported: number;
-  replaced: number;
+  importedEggLogs: number;
+  importedSales: number;
+  importedFeedPurchases: number;
+  importedExpenses: number;
+  importedInvestments: number;
+  importedHealthRecords: number;
+  replacedEggLogs: number;
+  replacedSales: number;
+  replacedFeedPurchases: number;
+  replacedExpenses: number;
+  replacedInvestments: number;
+  replacedHealthRecords: number;
   skipped: number;
   warnings: string[];
   detectedColumns: string[];
+  detectedSheets: string[];
   preview: ImportedEggLog[];
 };
 
@@ -172,6 +203,24 @@ function parseSpreadsheetNumber(value: SpreadsheetCell) {
   return 0;
 }
 
+function parseSpreadsheetDecimal(value: SpreadsheetCell) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(value, 0);
+  }
+
+  if (typeof value === "string") {
+    const normalized = value
+      .replace(/\s/g, "")
+      .replace(/\.(?=\d{3}(\D|$))/g, "")
+      .replace(",", ".")
+      .replace(/[^\d.-]/g, "");
+    const parsed = Number.parseFloat(normalized);
+    return Number.isNaN(parsed) ? 0 : Math.max(parsed, 0);
+  }
+
+  return 0;
+}
+
 function normalizeHeader(value: SpreadsheetCell) {
   return String(value ?? "")
     .toLowerCase()
@@ -237,6 +286,70 @@ function parseSpreadsheetDate(value: SpreadsheetCell) {
   return null;
 }
 
+const spanishMonthNumbers: Record<string, string> = {
+  enero: "01",
+  ene: "01",
+  febrero: "02",
+  feb: "02",
+  marzo: "03",
+  mar: "03",
+  abril: "04",
+  abr: "04",
+  mayo: "05",
+  may: "05",
+  junio: "06",
+  jun: "06",
+  julio: "07",
+  jul: "07",
+  agosto: "08",
+  ago: "08",
+  septiembre: "09",
+  setiembre: "09",
+  sep: "09",
+  sept: "09",
+  octubre: "10",
+  oct: "10",
+  noviembre: "11",
+  nov: "11",
+  diciembre: "12",
+  dic: "12",
+};
+
+function parseSpanishDateInText(value: string, year = "2026") {
+  const match = value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .match(/(\d{1,2})\s*(?:de\s*)?([a-z]+)/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const [, rawDay, rawMonth] = match;
+  const month = spanishMonthNumbers[rawMonth];
+
+  if (!month) {
+    return undefined;
+  }
+
+  return `${year}-${month}-${rawDay.padStart(2, "0")}`;
+}
+
+function getCell(row: SpreadsheetCell[] | undefined, index: number) {
+  return row?.[index];
+}
+
+function getSheet(sheets: SpreadsheetSheet[], sheetName: string) {
+  const normalizedTarget = normalizeHeader(sheetName);
+
+  return sheets.find(
+    (sheet) =>
+      normalizeHeader(sheet.sheet) === normalizedTarget ||
+      normalizeHeader(sheet.sheet).includes(normalizedTarget),
+  );
+}
+
 function parseDelimitedSpreadsheet(text: string, delimiter: "," | "\t") {
   const rows: string[][] = [];
   let currentRow: string[] = [];
@@ -285,19 +398,27 @@ function parseDelimitedSpreadsheet(text: string, delimiter: "," | "\t") {
   return rows.filter((row) => row.some((cell) => cell.trim()));
 }
 
-async function readSpreadsheetRows(file: File): Promise<SpreadsheetCell[][]> {
+async function readSpreadsheetWorkbook(file: File): Promise<SpreadsheetSheet[]> {
   const extension = file.name.split(".").pop()?.toLowerCase();
 
   if (extension === "xlsx") {
-    const rows = await readSheet(file);
-    return rows as SpreadsheetCell[][];
+    const sheets = await readXlsxFile(file);
+    return sheets.map((sheet) => ({
+      sheet: sheet.sheet,
+      data: sheet.data as SpreadsheetCell[][],
+    }));
   }
 
   if (extension === "csv" || extension === "tsv" || extension === "txt") {
     const text = await file.text();
     const delimiter =
       extension === "tsv" || text.split("\n")[0]?.includes("\t") ? "\t" : ",";
-    return parseDelimitedSpreadsheet(text, delimiter);
+    return [
+      {
+        sheet: file.name,
+        data: parseDelimitedSpreadsheet(text, delimiter),
+      },
+    ];
   }
 
   throw new Error("Please upload an .xlsx, .csv, or .tsv file.");
@@ -476,6 +597,514 @@ function parseEggImportRows(rows: SpreadsheetCell[][]): EggImportResult {
     skippedRows,
     warnings,
     detectedColumns: headerRow.map((cell) => String(cell ?? "")),
+  };
+}
+
+function buildWeekStartMap(productionRows: SpreadsheetCell[][]) {
+  const weekStarts = new Map<string, string>();
+  let currentWeek = "";
+
+  productionRows.forEach((row) => {
+    const weekLabel = String(getCell(row, 1) ?? "").trim();
+    const date = parseSpreadsheetDate(getCell(row, 2));
+
+    if (weekLabel) {
+      currentWeek = weekLabel;
+    }
+
+    if (currentWeek && date && !weekStarts.has(normalizeHeader(currentWeek))) {
+      weekStarts.set(normalizeHeader(currentWeek), date);
+    }
+  });
+
+  return weekStarts;
+}
+
+function buildEggNotes(row: SpreadsheetCell[], weekLabel: string) {
+  const pieces = [
+    weekLabel,
+    String(getCell(row, 3) ?? "").trim(),
+    parseSpreadsheetNumber(getCell(row, 4))
+      ? `${parseSpreadsheetNumber(getCell(row, 4))} aves vivas`
+      : "",
+    `C: ${parseSpreadsheetNumber(getCell(row, 6))}`,
+    `B: ${parseSpreadsheetNumber(getCell(row, 7))}`,
+    `A: ${parseSpreadsheetNumber(getCell(row, 8))}`,
+    `AA: ${parseSpreadsheetNumber(getCell(row, 9))}`,
+    `AAA: ${parseSpreadsheetNumber(getCell(row, 10))}`,
+  ].filter(Boolean);
+
+  return pieces.join(" | ");
+}
+
+function parseAndreaProductionRows(
+  productionRows: SpreadsheetCell[][],
+): ImportedEggLog[] {
+  let currentWeek = "";
+
+  return productionRows.flatMap((row) => {
+    const weekLabel = String(getCell(row, 1) ?? "").trim();
+    const date = parseSpreadsheetDate(getCell(row, 2));
+
+    if (weekLabel) {
+      currentWeek = weekLabel;
+    }
+
+    if (!date) {
+      return [];
+    }
+
+    const crackedEggs = parseSpreadsheetNumber(getCell(row, 11));
+    const totalEggs =
+      parseSpreadsheetNumber(getCell(row, 12)) ||
+      parseSpreadsheetNumber(getCell(row, 5));
+    const goodEggs = Math.max(totalEggs - crackedEggs, 0);
+
+    if (goodEggs + crackedEggs <= 0) {
+      return [];
+    }
+
+    return [
+      {
+        id: makeId("egg-import"),
+        date,
+        coop1Eggs: goodEggs,
+        coop2Eggs: 0,
+        crackedEggs,
+        notes: buildEggNotes(row, currentWeek),
+        synced: true,
+        createdAt: nowIso(),
+      },
+    ];
+  });
+}
+
+function parseAndreaSalesRows(ventaRows: SpreadsheetCell[][]): FarmState["sales"] {
+  return ventaRows.flatMap((row) => {
+    const date = parseSpreadsheetDate(getCell(row, 2));
+
+    if (!date) {
+      return [];
+    }
+
+    const eggCount = parseSpreadsheetDecimal(getCell(row, 4));
+    const totalCop = parseSpreadsheetDecimal(getCell(row, 18));
+
+    if (eggCount <= 0 || totalCop <= 0) {
+      return [];
+    }
+
+    const cartons = eggCount / 30;
+    const pricePerCartonCop = Math.round(totalCop / cartons);
+    const sizeSummary = [
+      ["C", getCell(row, 6)],
+      ["B", getCell(row, 7)],
+      ["A", getCell(row, 8)],
+      ["AA", getCell(row, 9)],
+      ["AAA", getCell(row, 10)],
+      ["Jumbo/Rotos", getCell(row, 11)],
+    ]
+      .map(([label, value]) => `${label}: ${parseSpreadsheetNumber(value)}`)
+      .join(", ");
+
+    return [
+      {
+        id: makeId("sale-import"),
+        date,
+        cartons,
+        pricePerCartonCop,
+        customerName: `Andrea template sale (${sizeSummary})`,
+      },
+    ];
+  });
+}
+
+function parseAndreaExpenseRows(
+  gastosRows: SpreadsheetCell[][],
+  weekStarts: Map<string, string>,
+) {
+  const feedPurchases: FarmState["feedPurchases"] = [];
+  const expenses: FarmState["expenses"] = [];
+
+  gastosRows.forEach((row) => {
+    const weekLabel = String(getCell(row, 0) ?? "").trim();
+
+    if (!weekLabel || !normalizeHeader(weekLabel).includes("semana")) {
+      return;
+    }
+
+    const date = weekStarts.get(normalizeHeader(weekLabel)) || todayIso();
+    const bultos = parseSpreadsheetDecimal(getCell(row, 1));
+    const feedUnitPrice = parseSpreadsheetDecimal(getCell(row, 2));
+    const feedTotal = parseSpreadsheetDecimal(getCell(row, 3)) || bultos * feedUnitPrice;
+    const caretaker = parseSpreadsheetDecimal(getCell(row, 4));
+    const otherDescription = String(getCell(row, 5) ?? "").trim();
+    const otherAmount = parseSpreadsheetDecimal(getCell(row, 6));
+    const transport = parseSpreadsheetDecimal(getCell(row, 7));
+
+    if (bultos > 0 || feedTotal > 0) {
+      feedPurchases.push({
+        id: makeId("feed-import"),
+        date,
+        feedType: "Alimento concentrado",
+        quantityKg: bultos * 50,
+        priceCop: Math.round(feedTotal),
+        supplier: weekLabel,
+      });
+    }
+
+    if (caretaker > 0) {
+      expenses.push({
+        id: makeId("expense-import"),
+        date,
+        category: "labour",
+        amountCop: Math.round(caretaker),
+        description: `Cuidandero - ${weekLabel}`,
+      });
+    }
+
+    if (otherAmount > 0) {
+      expenses.push({
+        id: makeId("expense-import"),
+        date,
+        category: "maintenance",
+        amountCop: Math.round(otherAmount),
+        description: otherDescription || `Otro gasto - ${weekLabel}`,
+      });
+    }
+
+    if (transport > 0) {
+      expenses.push({
+        id: makeId("expense-import"),
+        date,
+        category: "transport",
+        amountCop: Math.round(transport),
+        description: `Transporte - ${weekLabel}`,
+      });
+    }
+  });
+
+  return { feedPurchases, expenses };
+}
+
+function buildInvestmentItem({
+  category,
+  subcategory,
+  description,
+  quantity,
+  unitPrice,
+  totalPrice,
+  supplier,
+}: {
+  category: FarmState["investments"][number]["category"];
+  subcategory: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice?: number;
+  supplier?: string;
+}): FarmState["investments"][number] | null {
+  const cleanDescription = description.trim();
+  const cleanQuantity = quantity || (unitPrice || totalPrice ? 1 : 0);
+  const cleanTotal = Math.round(totalPrice || cleanQuantity * unitPrice);
+
+  if (!cleanDescription || cleanDescription.toLowerCase().includes("total")) {
+    return null;
+  }
+
+  if (cleanQuantity <= 0 && unitPrice <= 0 && cleanTotal <= 0) {
+    return null;
+  }
+
+  return {
+    id: makeId("investment-import"),
+    category,
+    subcategory,
+    description: cleanDescription,
+    quantity: cleanQuantity,
+    unit: "unidad",
+    unitPrice: Math.round(unitPrice || (cleanQuantity ? cleanTotal / cleanQuantity : cleanTotal)),
+    totalPrice: cleanTotal,
+    supplier,
+  };
+}
+
+function parseGalponInvestments(
+  galponRows: SpreadsheetCell[][],
+): FarmState["investments"] {
+  const investments: FarmState["investments"] = [];
+  let rightSupplier = "OLGA";
+
+  galponRows.forEach((row, index) => {
+    const rowNumber = index + 1;
+    const leftDescription = String(getCell(row, 1) ?? "").trim();
+    const rightHeading = String(getCell(row, 6) ?? getCell(row, 9) ?? "").trim();
+
+    if (normalizeHeader(rightHeading).includes("homecenter")) {
+      rightSupplier = "Homecenter";
+    } else if (normalizeHeader(rightHeading).includes("laroca")) {
+      rightSupplier = "La Roca";
+    } else if (normalizeHeader(rightHeading).includes("olga")) {
+      rightSupplier = "OLGA";
+    }
+
+    const leftItem = buildInvestmentItem({
+      category: "galpon_construccion",
+      subcategory: rowNumber >= 26 ? "Material usado" : "Construccion del galpon",
+      description: leftDescription,
+      quantity: parseSpreadsheetDecimal(getCell(row, 0)),
+      unitPrice: parseSpreadsheetDecimal(getCell(row, 2)),
+      totalPrice: parseSpreadsheetDecimal(getCell(row, 3)),
+    });
+
+    if (leftItem) {
+      investments.push(leftItem);
+    }
+
+    const rightDescription = String(getCell(row, 6) ?? "").trim();
+    const normalizedSupplier = normalizeHeader(rightSupplier);
+    const category = normalizedSupplier.includes("homecenter")
+      ? "galpon_materiales_homecenter"
+      : normalizedSupplier.includes("laroca")
+        ? "galpon_materiales_laroca"
+        : "galpon_materiales_olga";
+    const rightItem = buildInvestmentItem({
+      category,
+      subcategory: rightSupplier,
+      description: rightDescription,
+      quantity: parseSpreadsheetDecimal(getCell(row, 5)),
+      unitPrice: parseSpreadsheetDecimal(getCell(row, 7)),
+      totalPrice: parseSpreadsheetDecimal(getCell(row, 8)),
+      supplier: rightSupplier,
+    });
+
+    if (rightItem) {
+      investments.push(rightItem);
+    }
+  });
+
+  return investments;
+}
+
+function inferChickenInvestmentCategory(description: string) {
+  const normalized = normalizeHeader(description);
+
+  if (normalized.includes("gallina") || normalized.includes("cuidandero")) {
+    return "gallinas_compra" as const;
+  }
+
+  if (
+    normalized.includes("pollito") ||
+    normalized.includes("pollita") ||
+    normalized.includes("polla") ||
+    normalized.includes("prepico") ||
+    normalized.includes("levante")
+  ) {
+    return "gallinas_alimento" as const;
+  }
+
+  return "gallinas_compra" as const;
+}
+
+function parseGallinasInvestments(
+  gallinasRows: SpreadsheetCell[][],
+): FarmState["investments"] {
+  const investments: FarmState["investments"] = [];
+  let section: "birds" | "medicine" | "implements" = "birds";
+
+  gallinasRows.forEach((row) => {
+    const label = String(getCell(row, 1) ?? "").trim();
+    const normalizedLabel = normalizeHeader(label);
+
+    if (normalizedLabel.includes("medicamento") || normalizedLabel.includes("vitamina")) {
+      section = "medicine";
+      return;
+    }
+
+    if (normalizedLabel.includes("implementos")) {
+      section = "implements";
+      return;
+    }
+
+    const leftCategory =
+      section === "medicine"
+        ? "gallinas_medicina_vacunas"
+        : section === "implements"
+          ? "gallinas_implementos"
+          : inferChickenInvestmentCategory(label);
+    const leftItem = buildInvestmentItem({
+      category: leftCategory,
+      subcategory:
+        section === "medicine"
+          ? "Medicina y vacunas"
+          : section === "implements"
+            ? "Implementos del galpon"
+            : "Gallinas y comidas",
+      description: label,
+      quantity: parseSpreadsheetDecimal(getCell(row, 0)),
+      unitPrice: parseSpreadsheetDecimal(getCell(row, 2)),
+      totalPrice: parseSpreadsheetDecimal(getCell(row, 3)),
+    });
+
+    if (leftItem) {
+      investments.push(leftItem);
+    }
+
+    const rightDescription = String(getCell(row, 6) ?? "").trim();
+    const rightItem = buildInvestmentItem({
+      category: "gallinas_implementos",
+      subcategory: "La Roca",
+      description: rightDescription,
+      quantity: parseSpreadsheetDecimal(getCell(row, 5)),
+      unitPrice: parseSpreadsheetDecimal(getCell(row, 7)),
+      totalPrice: parseSpreadsheetDecimal(getCell(row, 8)),
+      supplier: rightDescription ? "La Roca" : undefined,
+    });
+
+    if (rightItem) {
+      investments.push(rightItem);
+    }
+  });
+
+  return investments;
+}
+
+function parseGallinasHealthRecords(
+  gallinasRows: SpreadsheetCell[][],
+): FarmState["healthRecords"] {
+  return gallinasRows.flatMap((row) => {
+    const description = String(getCell(row, 1) ?? "").trim();
+    const normalized = normalizeHeader(description);
+
+    if (!normalized.includes("vacuna")) {
+      return [];
+    }
+
+    return [
+      {
+        id: makeId("health-import"),
+        date: parseSpanishDateInText(description) || todayIso(),
+        type: "vaccination" as const,
+        sickBirds: 0,
+        deaths: 0,
+        notes: description,
+      },
+    ];
+  });
+}
+
+function parseAndreaCoops(
+  productionRows: SpreadsheetCell[][],
+): FarmState["coops"] | undefined {
+  const aliveValues = productionRows
+    .map((row) => parseSpreadsheetNumber(getCell(row, 4)))
+    .filter((value) => value > 0);
+  const latestAlive = aliveValues.at(-1);
+
+  if (!latestAlive) {
+    return undefined;
+  }
+
+  const coop1Hens = Math.ceil(latestAlive / 2);
+  const coop2Hens = Math.floor(latestAlive / 2);
+
+  return [
+    {
+      id: "coop-1",
+      name: "Coop 1",
+      capacity: 200,
+      hens: coop1Hens,
+      chicks: 0,
+      notes: "Imported from PRODUCCION ALIVE count.",
+    },
+    {
+      id: "coop-2",
+      name: "Coop 2",
+      capacity: 200,
+      hens: coop2Hens,
+      chicks: 0,
+      notes: "Imported from PRODUCCION ALIVE count.",
+    },
+  ];
+}
+
+function parseAndreaTemplateImport(
+  sheets: SpreadsheetSheet[],
+): FarmImportResult | null {
+  const productionSheet = getSheet(sheets, "PRODUCCION");
+  const ventaSheet = getSheet(sheets, "VENTA");
+  const gastosSheet = getSheet(sheets, "GASTOS");
+  const galponSheet = getSheet(sheets, "GALPON");
+  const gallinasSheet = getSheet(sheets, "GALLINAS");
+
+  if (!productionSheet && !ventaSheet && !gastosSheet && !galponSheet && !gallinasSheet) {
+    return null;
+  }
+
+  const weekStarts = buildWeekStartMap(productionSheet?.data || []);
+  const weeklyCosts = parseAndreaExpenseRows(gastosSheet?.data || [], weekStarts);
+  const investments = [
+    ...parseGalponInvestments(galponSheet?.data || []),
+    ...parseGallinasInvestments(gallinasSheet?.data || []),
+  ];
+  const warnings: string[] = [
+    "Andrea's template tracks egg sizes instead of coop splits, so imported good eggs are stored in Coop 1 and size details are kept in notes/sales summaries.",
+  ];
+
+  if (!productionSheet) {
+    warnings.push("No PRODUCCION sheet was found, so egg logs were not imported.");
+  }
+
+  if (!ventaSheet) {
+    warnings.push("No VENTA sheet was found, so sales were not imported.");
+  }
+
+  if (!gastosSheet) {
+    warnings.push("No GASTOS sheet was found, so weekly feed and expense rows were not imported.");
+  }
+
+  return {
+    source: "andrea-template",
+    eggLogs: parseAndreaProductionRows(productionSheet?.data || []),
+    sales: parseAndreaSalesRows(ventaSheet?.data || []),
+    feedPurchases: weeklyCosts.feedPurchases,
+    expenses: weeklyCosts.expenses,
+    investments,
+    healthRecords: parseGallinasHealthRecords(gallinasSheet?.data || []),
+    coops: parseAndreaCoops(productionSheet?.data || []),
+    skippedRows: 0,
+    warnings,
+    detectedColumns: [
+      "PRODUCCION: Fecha, T, C, B, A, AA, AAA, Rotos, HUEVOS",
+      "VENTA: Fecha, T.HUEVOS, COSTO/HUEVO, C, B, A, AA, AAA, JUMBO, TOTAL",
+      "GASTOS: SEMANAS, # BULTOS, P.BULTO, CUIDANDERO, OTRO, TRANSPORTE, TOTAL",
+      "GALPON/GALLINAS: CANTIDAD, DESCRIPCION, VALOR, TOTAL",
+    ],
+    detectedSheets: sheets.map((sheet) => sheet.sheet),
+  };
+}
+
+function parseFarmImport(sheets: SpreadsheetSheet[]): FarmImportResult {
+  const templateImport = parseAndreaTemplateImport(sheets);
+
+  if (templateImport) {
+    return templateImport;
+  }
+
+  const parsedEggs = parseEggImportRows(sheets[0]?.data || []);
+
+  return {
+    source: "egg-log",
+    eggLogs: parsedEggs.entries,
+    sales: [],
+    feedPurchases: [],
+    expenses: [],
+    investments: [],
+    healthRecords: [],
+    skippedRows: parsedEggs.skippedRows,
+    warnings: parsedEggs.warnings,
+    detectedColumns: parsedEggs.detectedColumns,
+    detectedSheets: sheets.map((sheet) => sheet.sheet),
   };
 }
 
@@ -986,13 +1615,13 @@ function EggsSection({
     setImporting(true);
 
     try {
-      const rows = await readSpreadsheetRows(file);
-      const parsed = parseEggImportRows(rows);
+      const sheets = await readSpreadsheetWorkbook(file);
+      const parsed = parseFarmImport(sheets);
       const importWarnings = [...parsed.warnings];
       const uniqueEntries = Array.from(
-        new Map(parsed.entries.map((entry) => [entry.date, entry])).values(),
+        new Map(parsed.eggLogs.map((entry) => [entry.date, entry])).values(),
       );
-      const duplicateRows = parsed.entries.length - uniqueEntries.length;
+      const duplicateRows = parsed.eggLogs.length - uniqueEntries.length;
 
       if (duplicateRows > 0) {
         importWarnings.push(
@@ -1000,52 +1629,150 @@ function EggsSection({
         );
       }
 
-      if (!uniqueEntries.length) {
+      const hasImportedData =
+        uniqueEntries.length ||
+        parsed.sales.length ||
+        parsed.feedPurchases.length ||
+        parsed.expenses.length ||
+        parsed.investments.length ||
+        parsed.healthRecords.length ||
+        parsed.coops?.length;
+
+      if (!hasImportedData) {
         setImportSummary({
           fileName: file.name,
-          imported: 0,
-          replaced: 0,
+          importedEggLogs: 0,
+          importedSales: 0,
+          importedFeedPurchases: 0,
+          importedExpenses: 0,
+          importedInvestments: 0,
+          importedHealthRecords: 0,
+          replacedEggLogs: 0,
+          replacedSales: 0,
+          replacedFeedPurchases: 0,
+          replacedExpenses: 0,
+          replacedInvestments: 0,
+          replacedHealthRecords: 0,
           skipped: parsed.skippedRows,
           warnings: importWarnings.length
             ? importWarnings
-            : ["No valid egg rows were found."],
+            : ["No valid farm rows were found."],
           detectedColumns: parsed.detectedColumns,
+          detectedSheets: parsed.detectedSheets,
           preview: [],
         });
         return;
       }
 
       const incomingDates = new Set(uniqueEntries.map((entry) => entry.date));
-      const replaced = state.eggLogs.filter((log) =>
+      const replacedEggLogs = state.eggLogs.filter((log) =>
         incomingDates.has(log.date),
       ).length;
+      const incomingSaleDates = new Set(parsed.sales.map((sale) => sale.date));
+      const incomingFeedDates = new Set(
+        parsed.feedPurchases.map((purchase) => purchase.date),
+      );
+      const incomingExpenseDates = new Set(
+        parsed.expenses.map((expense) => expense.date),
+      );
+      const incomingHealthKeys = new Set(
+        parsed.healthRecords.map((record) => `${record.date}-${record.notes}`),
+      );
+      const replacedSales = state.sales.filter((sale) =>
+        incomingSaleDates.has(sale.date),
+      ).length;
+      const replacedFeedPurchases = state.feedPurchases.filter((purchase) =>
+        incomingFeedDates.has(purchase.date),
+      ).length;
+      const replacedExpenses = state.expenses.filter((expense) =>
+        incomingExpenseDates.has(expense.date),
+      ).length;
+      const replacedHealthRecords = state.healthRecords.filter((record) =>
+        incomingHealthKeys.has(`${record.date}-${record.notes}`),
+      ).length;
+      const replacedInvestments =
+        parsed.source === "andrea-template" && parsed.investments.length
+          ? state.investments.length
+          : 0;
       const nextEggLogs = [
         ...state.eggLogs.filter((log) => !incomingDates.has(log.date)),
         ...uniqueEntries,
+      ].sort((a, b) => a.date.localeCompare(b.date));
+      const nextSales = [
+        ...state.sales.filter((sale) => !incomingSaleDates.has(sale.date)),
+        ...parsed.sales,
+      ].sort((a, b) => a.date.localeCompare(b.date));
+      const nextFeedPurchases = [
+        ...state.feedPurchases.filter(
+          (purchase) => !incomingFeedDates.has(purchase.date),
+        ),
+        ...parsed.feedPurchases,
+      ].sort((a, b) => a.date.localeCompare(b.date));
+      const nextExpenses = [
+        ...state.expenses.filter(
+          (expense) => !incomingExpenseDates.has(expense.date),
+        ),
+        ...parsed.expenses,
+      ].sort((a, b) => a.date.localeCompare(b.date));
+      const nextHealthRecords = [
+        ...state.healthRecords.filter(
+          (record) => !incomingHealthKeys.has(`${record.date}-${record.notes}`),
+        ),
+        ...parsed.healthRecords,
       ].sort((a, b) => a.date.localeCompare(b.date));
 
       updateState(
         {
           ...state,
           eggLogs: nextEggLogs,
+          sales: nextSales,
+          feedPurchases: nextFeedPurchases,
+          expenses: nextExpenses,
+          healthRecords: nextHealthRecords,
+          investments:
+            parsed.source === "andrea-template" && parsed.investments.length
+              ? parsed.investments
+              : state.investments,
+          coops: parsed.coops || state.coops,
         },
-        `Imported ${uniqueEntries.length} egg log${uniqueEntries.length === 1 ? "" : "s"} from ${file.name}.`,
+        `Imported Andrea farm data from ${file.name}.`,
       );
 
       setImportSummary({
         fileName: file.name,
-        imported: uniqueEntries.length,
-        replaced,
+        importedEggLogs: uniqueEntries.length,
+        importedSales: parsed.sales.length,
+        importedFeedPurchases: parsed.feedPurchases.length,
+        importedExpenses: parsed.expenses.length,
+        importedInvestments: parsed.investments.length,
+        importedHealthRecords: parsed.healthRecords.length,
+        replacedEggLogs,
+        replacedSales,
+        replacedFeedPurchases,
+        replacedExpenses,
+        replacedInvestments,
+        replacedHealthRecords,
         skipped: parsed.skippedRows,
         warnings: importWarnings,
         detectedColumns: parsed.detectedColumns,
+        detectedSheets: parsed.detectedSheets,
         preview: uniqueEntries.slice(0, 5),
       });
     } catch (error) {
       setImportSummary({
         fileName: file.name,
-        imported: 0,
-        replaced: 0,
+        importedEggLogs: 0,
+        importedSales: 0,
+        importedFeedPurchases: 0,
+        importedExpenses: 0,
+        importedInvestments: 0,
+        importedHealthRecords: 0,
+        replacedEggLogs: 0,
+        replacedSales: 0,
+        replacedFeedPurchases: 0,
+        replacedExpenses: 0,
+        replacedInvestments: 0,
+        replacedHealthRecords: 0,
         skipped: 0,
         warnings: [
           error instanceof Error
@@ -1053,6 +1780,7 @@ function EggsSection({
             : "The spreadsheet could not be imported.",
         ],
         detectedColumns: [],
+        detectedSheets: [],
         preview: [],
       });
     } finally {
@@ -1154,9 +1882,9 @@ function EggsSection({
           <div className="admin-import-help">
             <strong>Columns this importer understands</strong>
             <p>
-              Date or Fecha, Coop 1, Coop 2, Cracked, Total Eggs, and Notes.
-              Existing dates are updated so Andrea can safely import older
-              months without making duplicate daily logs.
+              Andrea&apos;s workbook tabs: PRODUCCION, VENTA, GASTOS, GALPON,
+              and GALLINAS. Simple CSV files can still use Date or Fecha, Coop
+              1, Coop 2, Cracked, Total Eggs, and Notes.
             </p>
           </div>
         </div>
@@ -1164,16 +1892,38 @@ function EggsSection({
         {importSummary ? (
           <div className="admin-import-summary">
             <div className="admin-summary-strip">
-              <span>{importSummary.imported} imported</span>
-              <span>{importSummary.replaced} updated</span>
+              <span>{importSummary.importedEggLogs} egg logs</span>
+              <span>{importSummary.importedSales} sales</span>
+              <span>{importSummary.importedFeedPurchases} feed buys</span>
+              <span>{importSummary.importedExpenses} expenses</span>
+              <span>{importSummary.importedInvestments} investments</span>
+              <span>{importSummary.importedHealthRecords} health notes</span>
               <span>{importSummary.skipped} skipped</span>
             </div>
             <p>
               <strong>{importSummary.fileName}</strong>
+              {importSummary.detectedSheets.length
+                ? ` sheets: ${importSummary.detectedSheets.join(", ")}`
+                : ""}
               {importSummary.detectedColumns.length
-                ? ` columns: ${importSummary.detectedColumns.join(", ")}`
+                ? ` fields: ${importSummary.detectedColumns.join(" | ")}`
                 : ""}
             </p>
+            {importSummary.replacedEggLogs ||
+            importSummary.replacedSales ||
+            importSummary.replacedFeedPurchases ||
+            importSummary.replacedExpenses ||
+            importSummary.replacedInvestments ||
+            importSummary.replacedHealthRecords ? (
+              <p>
+                Updated existing records: {importSummary.replacedEggLogs} egg
+                logs, {importSummary.replacedSales} sales,{" "}
+                {importSummary.replacedFeedPurchases} feed buys,{" "}
+                {importSummary.replacedExpenses} expenses,{" "}
+                {importSummary.replacedInvestments} investments,{" "}
+                {importSummary.replacedHealthRecords} health notes.
+              </p>
+            ) : null}
             {importSummary.warnings.length ? (
               <div className="admin-warning-list">
                 {importSummary.warnings.map((warning) => (
