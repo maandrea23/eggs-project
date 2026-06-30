@@ -48,7 +48,9 @@ import {
   formatCop,
   formatNumber,
   getEggChartData,
+  getFeedChartData,
   getReportRows,
+  getSalesChartData,
 } from "@/lib/calculations";
 import { createDemoFarmState, createFreshFarmState } from "@/lib/demo-data";
 import { loadFarmState, saveFarmState } from "@/lib/local-store";
@@ -170,6 +172,26 @@ const inventoryCategories: InventoryItem["category"][] = [
   "cleaning",
   "packaging",
 ];
+
+const adminChartMetricLabels: Record<string, string> = {
+  cartons: "Cartons",
+  purchasedKg: "Purchased kg",
+  revenueCop: "Revenue",
+  spendCop: "Feed spend",
+  usedKg: "Used kg",
+};
+
+function formatAdminChartTooltipValue(value: unknown, name: unknown) {
+  const metric = String(name);
+  const numberValue = Number(value);
+
+  return [
+    metric === "revenueCop" || metric === "spendCop"
+      ? formatCop(Number.isFinite(numberValue) ? numberValue : 0)
+      : formatNumber(Number.isFinite(numberValue) ? numberValue : 0),
+    adminChartMetricLabels[metric] ?? metric,
+  ];
+}
 
 async function saveFarmStateToDailey(state: FarmState) {
   const response = await fetch("/api/farm-state", {
@@ -1194,6 +1216,8 @@ export default function FarmAdminPage() {
   const alerts = useMemo(() => buildAlerts(state), [state]);
   const insights = useMemo(() => buildInsights(state), [state]);
   const eggChartData = useMemo(() => getEggChartData(state), [state]);
+  const salesChartData = useMemo(() => getSalesChartData(state), [state]);
+  const feedChartData = useMemo(() => getFeedChartData(state), [state]);
   const reportRows = useMemo(() => getReportRows(state), [state]);
 
   function updateState(nextState: FarmState, message: string) {
@@ -1340,6 +1364,7 @@ export default function FarmAdminPage() {
             <SalesSection
               state={state}
               metrics={metrics}
+              chartData={salesChartData}
               updateState={updateState}
             />
           ) : null}
@@ -1348,6 +1373,7 @@ export default function FarmAdminPage() {
             <ExpensesSection
               state={state}
               metrics={metrics}
+              chartData={feedChartData}
               updateState={updateState}
             />
           ) : null}
@@ -2002,10 +2028,12 @@ function EggsSection({
 function SalesSection({
   state,
   metrics,
+  chartData,
   updateState,
 }: {
   state: FarmState;
   metrics: ReturnType<typeof calculateFarmMetrics>;
+  chartData: ReturnType<typeof getSalesChartData>;
   updateState: (state: FarmState, message: string) => void;
 }) {
   const [form, setForm] = useState({
@@ -2115,6 +2143,62 @@ function SalesSection({
             ])}
         />
       </section>
+
+      <section className="admin-panel admin-span-6">
+        <div className="admin-panel-header">
+          <div>
+            <p className="admin-eyebrow">Sales chart</p>
+            <h2>Revenue by day</h2>
+          </div>
+          <BarChart3 size={20} />
+        </div>
+        <div className="admin-chart compact">
+          {chartData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                <Tooltip formatter={formatAdminChartTooltipValue} />
+                <Bar dataKey="revenueCop" fill="#4f7f64" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <AdminChartEmpty label="No sales recorded yet." />
+          )}
+        </div>
+      </section>
+
+      <section className="admin-panel admin-span-6">
+        <div className="admin-panel-header">
+          <div>
+            <p className="admin-eyebrow">Cartons chart</p>
+            <h2>Cartons sold by day</h2>
+          </div>
+          <ShoppingCart size={20} />
+        </div>
+        <div className="admin-chart compact">
+          {chartData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                <Tooltip formatter={formatAdminChartTooltipValue} />
+                <Area
+                  type="monotone"
+                  dataKey="cartons"
+                  stroke="#c78643"
+                  fill="#d8aa56"
+                  fillOpacity={0.24}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <AdminChartEmpty label="No carton sales to chart yet." />
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -2122,10 +2206,12 @@ function SalesSection({
 function ExpensesSection({
   state,
   metrics,
+  chartData,
   updateState,
 }: {
   state: FarmState;
   metrics: ReturnType<typeof calculateFarmMetrics>;
+  chartData: ReturnType<typeof getFeedChartData>;
   updateState: (state: FarmState, message: string) => void;
 }) {
   const [feedPurchase, setFeedPurchase] = useState({
@@ -2405,6 +2491,63 @@ function ExpensesSection({
             ]),
           ].sort((a, b) => String(b[0]).localeCompare(String(a[0])))}
         />
+      </section>
+
+      <section className="admin-panel admin-span-6">
+        <div className="admin-panel-header">
+          <div>
+            <p className="admin-eyebrow">Feed chart</p>
+            <h2>Feed kg movement</h2>
+          </div>
+          <BarChart3 size={20} />
+        </div>
+        <div className="admin-chart compact">
+          {chartData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                <Tooltip formatter={formatAdminChartTooltipValue} />
+                <Bar dataKey="purchasedKg" fill="#4f7f64" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="usedKg" fill="#c78643" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <AdminChartEmpty label="No feed movement recorded yet." />
+          )}
+        </div>
+      </section>
+
+      <section className="admin-panel admin-span-6">
+        <div className="admin-panel-header">
+          <div>
+            <p className="admin-eyebrow">Cost chart</p>
+            <h2>Feed spend by day</h2>
+          </div>
+          <Wallet size={20} />
+        </div>
+        <div className="admin-chart compact">
+          {chartData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                <Tooltip formatter={formatAdminChartTooltipValue} />
+                <Area
+                  type="monotone"
+                  dataKey="spendCop"
+                  stroke="#d8aa56"
+                  fill="#d8aa56"
+                  fillOpacity={0.25}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <AdminChartEmpty label="No feed spending to chart yet." />
+          )}
+        </div>
       </section>
     </div>
   );
@@ -3020,6 +3163,14 @@ function AdminField({
       <span>{label}</span>
       {children}
     </label>
+  );
+}
+
+function AdminChartEmpty({ label }: { label: string }) {
+  return (
+    <div className="admin-chart-empty">
+      {label}
+    </div>
   );
 }
 

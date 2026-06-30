@@ -450,6 +450,10 @@ textarea.input {
   grid-column: span 5;
 }
 
+.admin-span-6 {
+  grid-column: span 6;
+}
+
 .admin-span-7 {
   grid-column: span 7;
 }
@@ -825,6 +829,20 @@ textarea.input {
   text-align: center;
 }
 
+.admin-chart-empty {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  border: 1px dashed #d7dfd4;
+  border-radius: 8px;
+  background: #fbfcf9;
+  padding: 20px;
+  color: #687469;
+  font-size: 13px;
+  font-weight: 850;
+  text-align: center;
+}
+
 .admin-edit-row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -852,6 +870,7 @@ textarea.input {
 
   .admin-span-4,
   .admin-span-5,
+  .admin-span-6,
   .admin-span-7,
   .admin-span-8 {
     grid-column: span 12;

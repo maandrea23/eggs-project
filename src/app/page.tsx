@@ -1,5 +1,5 @@
-import FarmApp from "@/components/FarmApp";
+import ResponsiveFarmShell from "@/components/ResponsiveFarmShell";
 
 export default function Home() {
-  return <FarmApp />;
+  return <ResponsiveFarmShell />;
 }

@@ -49,7 +49,9 @@ import {
   formatCop,
   formatNumber,
   getEggChartData,
+  getFeedChartData,
   getReportRows,
+  getSalesChartData,
 } from "@/lib/calculations";
 import { createFreshFarmState } from "@/lib/demo-data";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
@@ -132,6 +134,30 @@ const expenseCategories: Expense["category"][] = [
   "packaging",
   "cleaning",
 ];
+
+const chartMetricLabels: Record<string, string> = {
+  averageCartonPrice: "Avg carton price",
+  cartons: "Cartons",
+  orders: "Orders",
+  purchasedKg: "Purchased kg",
+  revenueCop: "Revenue",
+  spendCop: "Feed spend",
+  usedKg: "Used kg",
+};
+
+function formatChartTooltipValue(value: unknown, name: unknown) {
+  const metric = String(name);
+  const numberValue = Number(value);
+
+  return [
+    metric === "revenueCop" ||
+    metric === "spendCop" ||
+    metric === "averageCartonPrice"
+      ? formatCop(Number.isFinite(numberValue) ? numberValue : 0)
+      : formatNumber(Number.isFinite(numberValue) ? numberValue : 0),
+    chartMetricLabels[metric] ?? metric,
+  ];
+}
 
 export default function FarmApp() {
   const [state, setState] = useState<FarmState>(() => createFreshFarmState());
@@ -218,6 +244,8 @@ export default function FarmApp() {
   const alerts = useMemo(() => buildAlerts(state), [state]);
   const insights = useMemo(() => buildInsights(state), [state]);
   const eggChartData = useMemo(() => getEggChartData(state), [state]);
+  const salesChartData = useMemo(() => getSalesChartData(state), [state]);
+  const feedChartData = useMemo(() => getFeedChartData(state), [state]);
   const reportRows = useMemo(() => getReportRows(state), [state]);
 
   function updateState(next: FarmState) {
@@ -521,6 +549,7 @@ export default function FarmApp() {
                 updateState={updateState}
                 queueOfflineItem={queueOfflineItem}
                 cartonsAvailable={metrics.cartonsAvailable}
+                chartData={salesChartData}
               />
             ) : null
           ) : null}
@@ -535,6 +564,7 @@ export default function FarmApp() {
               updateState={updateState}
               queueOfflineItem={queueOfflineItem}
               metrics={metrics}
+              chartData={feedChartData}
             />
           ) : null}
           {effectiveTab === "investment" ? (
@@ -953,6 +983,7 @@ function SalesSection({
   updateState,
   queueOfflineItem,
   cartonsAvailable,
+  chartData,
 }: {
   state: FarmState;
   updateState: (state: FarmState) => void;
@@ -961,6 +992,7 @@ function SalesSection({
     payload: unknown,
   ) => OfflineQueueItem;
   cartonsAvailable: number;
+  chartData: ReturnType<typeof getSalesChartData>;
 }) {
   const [form, setForm] = useState({
     date: todayIso(),
@@ -987,108 +1019,154 @@ function SalesSection({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-      <Card title="Record sale" icon={ShoppingCart}>
-        <form className="grid gap-4" onSubmit={submit}>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="soft-panel p-4">
-              <p className="text-sm font-bold text-[var(--olive)]">Cartons ready</p>
-              <p className="mt-1 text-4xl font-black">{cartonsAvailable}</p>
-              <p className="text-sm font-semibold text-[var(--muted)]">
-                cartons of 30
-              </p>
-            </div>
-            <div className="soft-panel p-4">
-              <p className="text-sm font-bold text-[var(--olive)]">Today revenue</p>
-              <p className="mt-1 break-words text-2xl font-black">
-                {formatCop(total)}
-              </p>
-              <p className="text-sm font-semibold text-[var(--muted)]">
-                current sale
-              </p>
-            </div>
-          </div>
-          <Field label="Sale date">
-            <input
-              className="input"
-              type="date"
-              value={form.date}
-              onChange={(event) =>
-                setForm({ ...form, date: event.target.value })
-              }
-            />
-          </Field>
-          <NumberField
-            label="Cartons sold"
-            value={form.cartons}
-            onChange={(value) => setForm({ ...form, cartons: value })}
-          />
-          <NumericKeypad
-            onDigit={(digit) =>
-              setForm({
-                ...form,
-                cartons: Number(`${form.cartons || ""}${digit}`),
-              })
-            }
-            onBackspace={() =>
-              setForm({
-                ...form,
-                cartons: Math.floor(form.cartons / 10),
-              })
-            }
-            onClear={() => setForm({ ...form, cartons: 0 })}
-          />
-          <NumberField
-            label="Price per carton COP"
-            value={form.pricePerCartonCop}
-            onChange={(value) =>
-              setForm({ ...form, pricePerCartonCop: value })
-            }
-          />
-          <Field label="Customer name">
-            <input
-              className="input"
-              value={form.customerName}
-              onChange={(event) =>
-                setForm({ ...form, customerName: event.target.value })
-              }
-              placeholder="Optional"
-            />
-          </Field>
-          <div className="soft-panel p-4">
-            <p className="text-sm font-bold text-[var(--muted)]">Sale total</p>
-            <p className="text-3xl font-black">{formatCop(total)}</p>
-          </div>
-          <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
-            <ReceiptText size={20} />
-            Save sale
-          </button>
-        </form>
-      </Card>
-
-      <Card title="Recent sales" icon={Wallet}>
-        <div className="grid gap-3">
-          {state.sales
-            .slice()
-            .reverse()
-            .map((sale) => (
-              <div key={sale.id} className="soft-panel p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-black">
-                    {sale.cartons} cartons • {sale.date}
-                  </p>
-                  <p className="font-black">
-                    {formatCop(sale.cartons * sale.pricePerCartonCop)}
-                  </p>
-                </div>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  {sale.customerName || "No customer name"} •{" "}
-                  {formatCop(sale.pricePerCartonCop)} each
+    <div className="grid gap-4">
+      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        <Card title="Record sale" icon={ShoppingCart}>
+          <form className="grid gap-4" onSubmit={submit}>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="soft-panel p-4">
+                <p className="text-sm font-bold text-[var(--olive)]">Cartons ready</p>
+                <p className="mt-1 text-4xl font-black">{cartonsAvailable}</p>
+                <p className="text-sm font-semibold text-[var(--muted)]">
+                  cartons of 30
                 </p>
               </div>
-            ))}
-        </div>
-      </Card>
+              <div className="soft-panel p-4">
+                <p className="text-sm font-bold text-[var(--olive)]">Today revenue</p>
+                <p className="mt-1 break-words text-2xl font-black">
+                  {formatCop(total)}
+                </p>
+                <p className="text-sm font-semibold text-[var(--muted)]">
+                  current sale
+                </p>
+              </div>
+            </div>
+            <Field label="Sale date">
+              <input
+                className="input"
+                type="date"
+                value={form.date}
+                onChange={(event) =>
+                  setForm({ ...form, date: event.target.value })
+                }
+              />
+            </Field>
+            <NumberField
+              label="Cartons sold"
+              value={form.cartons}
+              onChange={(value) => setForm({ ...form, cartons: value })}
+            />
+            <NumericKeypad
+              onDigit={(digit) =>
+                setForm({
+                  ...form,
+                  cartons: Number(`${form.cartons || ""}${digit}`),
+                })
+              }
+              onBackspace={() =>
+                setForm({
+                  ...form,
+                  cartons: Math.floor(form.cartons / 10),
+                })
+              }
+              onClear={() => setForm({ ...form, cartons: 0 })}
+            />
+            <NumberField
+              label="Price per carton COP"
+              value={form.pricePerCartonCop}
+              onChange={(value) =>
+                setForm({ ...form, pricePerCartonCop: value })
+              }
+            />
+            <Field label="Customer name">
+              <input
+                className="input"
+                value={form.customerName}
+                onChange={(event) =>
+                  setForm({ ...form, customerName: event.target.value })
+                }
+                placeholder="Optional"
+              />
+            </Field>
+            <div className="soft-panel p-4">
+              <p className="text-sm font-bold text-[var(--muted)]">Sale total</p>
+              <p className="text-3xl font-black">{formatCop(total)}</p>
+            </div>
+            <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
+              <ReceiptText size={20} />
+              Save sale
+            </button>
+          </form>
+        </Card>
+
+        <Card title="Recent sales" icon={Wallet}>
+          <div className="grid gap-3">
+            {state.sales
+              .slice()
+              .reverse()
+              .map((sale) => (
+                <div key={sale.id} className="soft-panel p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="font-black">
+                      {sale.cartons} cartons • {sale.date}
+                    </p>
+                    <p className="font-black">
+                      {formatCop(sale.cartons * sale.pricePerCartonCop)}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    {sale.customerName || "No customer name"} •{" "}
+                    {formatCop(sale.pricePerCartonCop)} each
+                  </p>
+                </div>
+              ))}
+          </div>
+        </Card>
+      </div>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card title="Sales revenue trend" icon={BarChart3}>
+          <div className="h-64">
+            {chartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 8" stroke="var(--line)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <Tooltip formatter={formatChartTooltipValue} />
+                  <Bar dataKey="revenueCop" fill="var(--base-moss)" radius={[12, 12, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ChartEmpty label="No sales recorded yet." />
+            )}
+          </div>
+        </Card>
+
+        <Card title="Cartons sold trend" icon={ShoppingCart}>
+          <div className="h-64">
+            {chartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 8" stroke="var(--line)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <Tooltip formatter={formatChartTooltipValue} />
+                  <Area
+                    type="monotone"
+                    dataKey="cartons"
+                    stroke="var(--base-clay)"
+                    fill="var(--base-harvest)"
+                    fillOpacity={0.26}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <ChartEmpty label="No carton sales to chart yet." />
+            )}
+          </div>
+        </Card>
+      </section>
     </div>
   );
 }
@@ -1309,6 +1387,7 @@ function FeedExpenseSection({
   updateState,
   queueOfflineItem,
   metrics,
+  chartData,
 }: {
   state: FarmState;
   updateState: (state: FarmState) => void;
@@ -1317,6 +1396,7 @@ function FeedExpenseSection({
     payload: unknown,
   ) => OfflineQueueItem;
   metrics: ReturnType<typeof calculateFarmMetrics>;
+  chartData: ReturnType<typeof getFeedChartData>;
 }) {
   const [purchase, setPurchase] = useState({
     date: todayIso(),
@@ -1397,143 +1477,190 @@ function FeedExpenseSection({
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-3">
-      <Card title="Feed purchase" icon={Sprout}>
-        <form className="grid gap-4" onSubmit={submitPurchase}>
-          <Field label="Date">
-            <input
-              className="input"
-              type="date"
-              value={purchase.date}
-              onChange={(event) =>
-                setPurchase({ ...purchase, date: event.target.value })
-              }
+    <div className="grid gap-4">
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card title="Feed purchase" icon={Sprout}>
+          <form className="grid gap-4" onSubmit={submitPurchase}>
+            <Field label="Date">
+              <input
+                className="input"
+                type="date"
+                value={purchase.date}
+                onChange={(event) =>
+                  setPurchase({ ...purchase, date: event.target.value })
+                }
+              />
+            </Field>
+            <Field label="Feed type">
+              <input
+                className="input"
+                value={purchase.feedType}
+                onChange={(event) =>
+                  setPurchase({ ...purchase, feedType: event.target.value })
+                }
+              />
+            </Field>
+            <NumberField
+              label="Quantity kg"
+              value={purchase.quantityKg}
+              onChange={(quantityKg) => setPurchase({ ...purchase, quantityKg })}
             />
-          </Field>
-          <Field label="Feed type">
-            <input
-              className="input"
-              value={purchase.feedType}
-              onChange={(event) =>
-                setPurchase({ ...purchase, feedType: event.target.value })
-              }
+            <NumberField
+              label="Total price COP"
+              value={purchase.priceCop}
+              onChange={(priceCop) => setPurchase({ ...purchase, priceCop })}
             />
-          </Field>
-          <NumberField
-            label="Quantity kg"
-            value={purchase.quantityKg}
-            onChange={(quantityKg) => setPurchase({ ...purchase, quantityKg })}
-          />
-          <NumberField
-            label="Total price COP"
-            value={purchase.priceCop}
-            onChange={(priceCop) => setPurchase({ ...purchase, priceCop })}
-          />
-          <Field label="Supplier">
-            <input
-              className="input"
-              value={purchase.supplier}
-              onChange={(event) =>
-                setPurchase({ ...purchase, supplier: event.target.value })
-              }
-            />
-          </Field>
-          <button className="primary-button h-13">
-            Save purchase
-          </button>
-        </form>
-      </Card>
+            <Field label="Supplier">
+              <input
+                className="input"
+                value={purchase.supplier}
+                onChange={(event) =>
+                  setPurchase({ ...purchase, supplier: event.target.value })
+                }
+              />
+            </Field>
+            <button className="primary-button h-13">
+              Save purchase
+            </button>
+          </form>
+        </Card>
 
-      <Card title="Feed usage" icon={Package}>
-        <form className="grid gap-4" onSubmit={submitUsage}>
-          <div className="rounded-3xl bg-[#eef5ef] p-4">
-            <p className="text-sm font-bold text-[#496150]">Feed stock</p>
-            <p className="text-4xl font-black">
-              {formatNumber(metrics.feedStockKg)} kg
-            </p>
-            <p className="text-sm font-semibold text-[#496150]">
-              About {metrics.feedDaysRemaining} days remaining
-            </p>
+        <Card title="Feed usage" icon={Package}>
+          <form className="grid gap-4" onSubmit={submitUsage}>
+            <div className="rounded-3xl bg-[#eef5ef] p-4">
+              <p className="text-sm font-bold text-[#496150]">Feed stock</p>
+              <p className="text-4xl font-black">
+                {formatNumber(metrics.feedStockKg)} kg
+              </p>
+              <p className="text-sm font-semibold text-[#496150]">
+                About {metrics.feedDaysRemaining} days remaining
+              </p>
+            </div>
+            <Field label="Date">
+              <input
+                className="input"
+                type="date"
+                value={usage.date}
+                onChange={(event) =>
+                  setUsage({ ...usage, date: event.target.value })
+                }
+              />
+            </Field>
+            <NumberField
+              label="Quantity used kg"
+              value={usage.quantityKg}
+              onChange={(quantityKg) => setUsage({ ...usage, quantityKg })}
+            />
+            <Field label="Notes">
+              <input
+                className="input"
+                value={usage.notes}
+                onChange={(event) =>
+                  setUsage({ ...usage, notes: event.target.value })
+                }
+              />
+            </Field>
+            <button className="primary-button h-13">
+              Save usage
+            </button>
+          </form>
+        </Card>
+
+        <Card title="Other expense" icon={ReceiptText}>
+          <form className="grid gap-4" onSubmit={submitExpense}>
+            <Field label="Date">
+              <input
+                className="input"
+                type="date"
+                value={expense.date}
+                onChange={(event) =>
+                  setExpense({ ...expense, date: event.target.value })
+                }
+              />
+            </Field>
+            <Field label="Category">
+              <select
+                className="input"
+                value={expense.category}
+                onChange={(event) =>
+                  setExpense({
+                    ...expense,
+                    category: event.target.value as Expense["category"],
+                  })
+                }
+              >
+                {expenseCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <NumberField
+              label="Amount COP"
+              value={expense.amountCop}
+              onChange={(amountCop) => setExpense({ ...expense, amountCop })}
+            />
+            <Field label="Description">
+              <input
+                className="input"
+                value={expense.description}
+                onChange={(event) =>
+                  setExpense({ ...expense, description: event.target.value })
+                }
+              />
+            </Field>
+            <button className="primary-button h-13">
+              Save expense
+            </button>
+          </form>
+        </Card>
+      </div>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card title="Feed kg movement" icon={BarChart3}>
+          <div className="h-64">
+            {chartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 8" stroke="var(--line)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <Tooltip formatter={formatChartTooltipValue} />
+                  <Bar dataKey="purchasedKg" fill="var(--base-moss)" radius={[12, 12, 0, 0]} />
+                  <Bar dataKey="usedKg" fill="var(--base-clay)" radius={[12, 12, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ChartEmpty label="No feed movement recorded yet." />
+            )}
           </div>
-          <Field label="Date">
-            <input
-              className="input"
-              type="date"
-              value={usage.date}
-              onChange={(event) =>
-                setUsage({ ...usage, date: event.target.value })
-              }
-            />
-          </Field>
-          <NumberField
-            label="Quantity used kg"
-            value={usage.quantityKg}
-            onChange={(quantityKg) => setUsage({ ...usage, quantityKg })}
-          />
-          <Field label="Notes">
-            <input
-              className="input"
-              value={usage.notes}
-              onChange={(event) =>
-                setUsage({ ...usage, notes: event.target.value })
-              }
-            />
-          </Field>
-          <button className="primary-button h-13">
-            Save usage
-          </button>
-        </form>
-      </Card>
+        </Card>
 
-      <Card title="Other expense" icon={ReceiptText}>
-        <form className="grid gap-4" onSubmit={submitExpense}>
-          <Field label="Date">
-            <input
-              className="input"
-              type="date"
-              value={expense.date}
-              onChange={(event) =>
-                setExpense({ ...expense, date: event.target.value })
-              }
-            />
-          </Field>
-          <Field label="Category">
-            <select
-              className="input"
-              value={expense.category}
-              onChange={(event) =>
-                setExpense({
-                  ...expense,
-                  category: event.target.value as Expense["category"],
-                })
-              }
-            >
-              {expenseCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <NumberField
-            label="Amount COP"
-            value={expense.amountCop}
-            onChange={(amountCop) => setExpense({ ...expense, amountCop })}
-          />
-          <Field label="Description">
-            <input
-              className="input"
-              value={expense.description}
-              onChange={(event) =>
-                setExpense({ ...expense, description: event.target.value })
-              }
-            />
-          </Field>
-          <button className="primary-button h-13">
-            Save expense
-          </button>
-        </form>
-      </Card>
+        <Card title="Feed spend trend" icon={Wallet}>
+          <div className="h-64">
+            {chartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 8" stroke="var(--line)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <Tooltip formatter={formatChartTooltipValue} />
+                  <Area
+                    type="monotone"
+                    dataKey="spendCop"
+                    stroke="var(--base-harvest)"
+                    fill="var(--base-harvest)"
+                    fillOpacity={0.28}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <ChartEmpty label="No feed spending to chart yet." />
+            )}
+          </div>
+        </Card>
+      </section>
     </div>
   );
 }
@@ -2186,6 +2313,14 @@ function Card({
       </div>
       {children}
     </section>
+  );
+}
+
+function ChartEmpty({ label }: { label: string }) {
+  return (
+    <div className="grid h-full place-items-center rounded-[1.5rem] bg-[var(--card-soft)] p-5 text-center text-sm font-bold text-[var(--muted)]">
+      {label}
+    </div>
   );
 }
 

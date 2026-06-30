@@ -125,6 +125,75 @@ export function getEggChartData(state: FarmState) {
   }));
 }
 
+export function getSalesChartData(state: FarmState) {
+  const totalsByDate = new Map<
+    string,
+    { cartons: number; revenueCop: number; orders: number }
+  >();
+
+  for (const sale of state.sales) {
+    const current = totalsByDate.get(sale.date) ?? {
+      cartons: 0,
+      revenueCop: 0,
+      orders: 0,
+    };
+
+    current.cartons += sale.cartons;
+    current.revenueCop += sale.cartons * sale.pricePerCartonCop;
+    current.orders += 1;
+    totalsByDate.set(sale.date, current);
+  }
+
+  return Array.from(totalsByDate.entries())
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .slice(-14)
+    .map(([date, totals]) => ({
+      date: format(parseISO(date), "MMM d"),
+      cartons: totals.cartons,
+      revenueCop: totals.revenueCop,
+      orders: totals.orders,
+      averageCartonPrice: totals.cartons ? totals.revenueCop / totals.cartons : 0,
+    }));
+}
+
+export function getFeedChartData(state: FarmState) {
+  const totalsByDate = new Map<
+    string,
+    { purchasedKg: number; usedKg: number; spendCop: number }
+  >();
+
+  for (const purchase of state.feedPurchases) {
+    const current = totalsByDate.get(purchase.date) ?? {
+      purchasedKg: 0,
+      usedKg: 0,
+      spendCop: 0,
+    };
+
+    current.purchasedKg += purchase.quantityKg;
+    current.spendCop += purchase.priceCop;
+    totalsByDate.set(purchase.date, current);
+  }
+
+  for (const usage of state.feedUsage) {
+    const current = totalsByDate.get(usage.date) ?? {
+      purchasedKg: 0,
+      usedKg: 0,
+      spendCop: 0,
+    };
+
+    current.usedKg += usage.quantityKg;
+    totalsByDate.set(usage.date, current);
+  }
+
+  return Array.from(totalsByDate.entries())
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .slice(-14)
+    .map(([date, totals]) => ({
+      date: format(parseISO(date), "MMM d"),
+      ...totals,
+    }));
+}
+
 export function getReportRows(state: FarmState) {
   return state.eggLogs.slice(-14).map((log) => {
     const salesForDay = state.sales.filter((sale) => sale.date === log.date);
