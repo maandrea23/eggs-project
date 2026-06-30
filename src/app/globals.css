@@ -690,6 +690,84 @@ textarea.input {
   font-weight: 900;
 }
 
+.admin-import-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.admin-upload-box {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 170px;
+  border: 1px dashed #9db4a1;
+  border-radius: 8px;
+  background: #f4faf4;
+  padding: 18px;
+  color: #315f42;
+  text-align: center;
+}
+
+.admin-upload-box input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.admin-upload-box strong {
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.admin-upload-box span,
+.admin-import-help p,
+.admin-import-summary p {
+  color: #687469;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.admin-import-help {
+  border: 1px solid #edf1ec;
+  border-radius: 8px;
+  background: #fbfcf9;
+  padding: 14px;
+}
+
+.admin-import-help strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #253229;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.admin-import-summary {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.admin-warning-list {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-warning-list span {
+  border-left: 4px solid #d8aa56;
+  border-radius: 8px;
+  background: #fff8e6;
+  padding: 9px 10px;
+  color: #73510d;
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .admin-table-wrap {
   overflow-x: auto;
   border: 1px solid #e5ebe2;
@@ -826,6 +904,7 @@ textarea.input {
 
   .admin-metrics,
   .admin-report-grid,
+  .admin-import-layout,
   .admin-insights,
   .admin-edit-row {
     grid-template-columns: 1fr;

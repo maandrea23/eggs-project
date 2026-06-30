@@ -24,8 +24,10 @@ import {
   ShoppingCart,
   Sprout,
   Trash2,
+  Upload,
   Wallet,
 } from "lucide-react";
+import { readSheet } from "read-excel-file/browser";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Area,
@@ -73,6 +75,27 @@ type AdminNavItem = {
   id: AdminSection;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
+};
+
+type SpreadsheetCell = string | number | boolean | Date | null | undefined;
+
+type ImportedEggLog = FarmState["eggLogs"][number];
+
+type EggImportResult = {
+  entries: ImportedEggLog[];
+  skippedRows: number;
+  warnings: string[];
+  detectedColumns: string[];
+};
+
+type EggImportSummary = {
+  fileName: string;
+  imported: number;
+  replaced: number;
+  skipped: number;
+  warnings: string[];
+  detectedColumns: string[];
+  preview: ImportedEggLog[];
 };
 
 const todayIso = () => format(new Date(), "yyyy-MM-dd");
@@ -131,6 +154,325 @@ async function saveFarmStateToDailey(state: FarmState) {
 function parseNumber(value: string) {
   const parsed = Number.parseInt(value.replace(/[^\d-]/g, ""), 10);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function parseSpreadsheetNumber(value: SpreadsheetCell) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(Math.round(value), 0);
+  }
+
+  if (typeof value === "string") {
+    return Math.max(parseNumber(value), 0);
+  }
+
+  return 0;
+}
+
+function normalizeHeader(value: SpreadsheetCell) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function findColumn(headers: string[], aliases: string[]) {
+  const normalizedAliases = aliases.map(normalizeHeader);
+
+  return headers.findIndex((header) =>
+    normalizedAliases.some(
+      (alias) => header === alias || header.includes(alias),
+    ),
+  );
+}
+
+function parseSpreadsheetDate(value: SpreadsheetCell) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return format(value, "yyyy-MM-dd");
+  }
+
+  if (typeof value === "number" && value > 20000 && value < 80000) {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    return format(new Date(excelEpoch + value * 86400000), "yyyy-MM-dd");
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const isoMatch = trimmed.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+
+  if (slashMatch) {
+    const [, first, second, rawYear] = slashMatch;
+    const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
+    const firstNumber = Number(first);
+    const secondNumber = Number(second);
+    const day = firstNumber > 12 ? first : secondNumber > 12 ? second : first;
+    const month = firstNumber > 12 ? second : secondNumber > 12 ? first : second;
+
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(trimmed);
+
+  if (!Number.isNaN(parsed.getTime())) {
+    return format(parsed, "yyyy-MM-dd");
+  }
+
+  return null;
+}
+
+function parseDelimitedSpreadsheet(text: string, delimiter: "," | "\t") {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = "";
+  let insideQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const nextCharacter = text[index + 1];
+
+    if (character === '"' && insideQuotes && nextCharacter === '"') {
+      currentCell += '"';
+      index += 1;
+      continue;
+    }
+
+    if (character === '"') {
+      insideQuotes = !insideQuotes;
+      continue;
+    }
+
+    if (character === delimiter && !insideQuotes) {
+      currentRow.push(currentCell);
+      currentCell = "";
+      continue;
+    }
+
+    if ((character === "\n" || character === "\r") && !insideQuotes) {
+      if (character === "\r" && nextCharacter === "\n") {
+        index += 1;
+      }
+
+      currentRow.push(currentCell);
+      rows.push(currentRow);
+      currentRow = [];
+      currentCell = "";
+      continue;
+    }
+
+    currentCell += character;
+  }
+
+  currentRow.push(currentCell);
+  rows.push(currentRow);
+
+  return rows.filter((row) => row.some((cell) => cell.trim()));
+}
+
+async function readSpreadsheetRows(file: File): Promise<SpreadsheetCell[][]> {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+
+  if (extension === "xlsx") {
+    const rows = await readSheet(file);
+    return rows as SpreadsheetCell[][];
+  }
+
+  if (extension === "csv" || extension === "tsv" || extension === "txt") {
+    const text = await file.text();
+    const delimiter =
+      extension === "tsv" || text.split("\n")[0]?.includes("\t") ? "\t" : ",";
+    return parseDelimitedSpreadsheet(text, delimiter);
+  }
+
+  throw new Error("Please upload an .xlsx, .csv, or .tsv file.");
+}
+
+function parseEggImportRows(rows: SpreadsheetCell[][]): EggImportResult {
+  const warnings: string[] = [];
+  const compactRows = rows.filter((row) =>
+    row.some((cell) => String(cell ?? "").trim()),
+  );
+
+  if (!compactRows.length) {
+    return {
+      entries: [],
+      skippedRows: 0,
+      warnings: ["The uploaded spreadsheet was empty."],
+      detectedColumns: [],
+    };
+  }
+
+  const headerRowIndex = compactRows.findIndex((row) => {
+    const headers = row.map(normalizeHeader);
+    const dateIndex = findColumn(headers, ["date", "fecha", "day", "dia"]);
+    const eggIndex = findColumn(headers, [
+      "coop1",
+      "coop2",
+      "eggs",
+      "huevos",
+      "totaleggs",
+    ]);
+
+    return dateIndex >= 0 && eggIndex >= 0;
+  });
+
+  const hasHeaders = headerRowIndex >= 0;
+  const headerRow = hasHeaders
+    ? compactRows[headerRowIndex]
+    : ["Date", "Coop 1", "Coop 2", "Cracked", "Notes"];
+  const headers = headerRow.map(normalizeHeader);
+  const firstDataRowIndex = hasHeaders ? headerRowIndex + 1 : 0;
+
+  if (!hasHeaders) {
+    warnings.push(
+      "No header row was detected, so the importer assumed columns are Date, Coop 1, Coop 2, Cracked, Notes.",
+    );
+  }
+
+  const columnMap = {
+    date: findColumn(headers, [
+      "date",
+      "fecha",
+      "day",
+      "dia",
+      "collectiondate",
+      "eggdate",
+    ]),
+    coop1: findColumn(headers, [
+      "coop1",
+      "coop1eggs",
+      "coopone",
+      "cooponeeggs",
+      "galpon1",
+      "gallinero1",
+      "house1",
+    ]),
+    coop2: findColumn(headers, [
+      "coop2",
+      "coop2eggs",
+      "cooptwo",
+      "cooptwoeggs",
+      "galpon2",
+      "gallinero2",
+      "house2",
+    ]),
+    total: findColumn(headers, [
+      "total",
+      "totaleggs",
+      "eggs",
+      "huevos",
+      "totalhuevos",
+      "collected",
+      "collectedeggs",
+    ]),
+    cracked: findColumn(headers, [
+      "cracked",
+      "crackedeggs",
+      "broken",
+      "damaged",
+      "rotos",
+      "quebrados",
+      "huevosrotos",
+    ]),
+    notes: findColumn(headers, [
+      "notes",
+      "note",
+      "notas",
+      "observaciones",
+      "comments",
+    ]),
+  };
+
+  if (columnMap.date < 0) {
+    return {
+      entries: [],
+      skippedRows: compactRows.length - firstDataRowIndex,
+      warnings: ["A Date or Fecha column is required."],
+      detectedColumns: headerRow.map((cell) => String(cell ?? "")),
+    };
+  }
+
+  if (columnMap.coop1 < 0 && columnMap.coop2 < 0 && columnMap.total < 0) {
+    return {
+      entries: [],
+      skippedRows: compactRows.length - firstDataRowIndex,
+      warnings: ["At least one egg count column is required."],
+      detectedColumns: headerRow.map((cell) => String(cell ?? "")),
+    };
+  }
+
+  if (columnMap.total >= 0 && columnMap.coop1 < 0 && columnMap.coop2 < 0) {
+    warnings.push(
+      "Rows with Total Eggs but no coop split were imported into Coop 1.",
+    );
+  }
+
+  const entries: ImportedEggLog[] = [];
+  let skippedRows = 0;
+
+  compactRows.slice(firstDataRowIndex).forEach((row) => {
+    const date = parseSpreadsheetDate(row[columnMap.date]);
+
+    if (!date) {
+      skippedRows += 1;
+      return;
+    }
+
+    const totalEggs =
+      columnMap.total >= 0 ? parseSpreadsheetNumber(row[columnMap.total]) : 0;
+    const coop1Eggs =
+      columnMap.coop1 >= 0
+        ? parseSpreadsheetNumber(row[columnMap.coop1])
+        : totalEggs;
+    const coop2Eggs =
+      columnMap.coop2 >= 0 ? parseSpreadsheetNumber(row[columnMap.coop2]) : 0;
+    const crackedEggs =
+      columnMap.cracked >= 0
+        ? parseSpreadsheetNumber(row[columnMap.cracked])
+        : 0;
+    const notes =
+      columnMap.notes >= 0 ? String(row[columnMap.notes] ?? "").trim() : "";
+
+    if (coop1Eggs + coop2Eggs + crackedEggs <= 0) {
+      skippedRows += 1;
+      return;
+    }
+
+    entries.push({
+      id: makeId("egg-import"),
+      date,
+      coop1Eggs,
+      coop2Eggs,
+      crackedEggs,
+      notes:
+        columnMap.total >= 0 && columnMap.coop1 < 0 && columnMap.coop2 < 0
+          ? [notes, "Imported from total egg count; no coop split in source."]
+              .filter(Boolean)
+              .join(" ")
+          : notes,
+      synced: true,
+      createdAt: nowIso(),
+    });
+  });
+
+  return {
+    entries,
+    skippedRows,
+    warnings,
+    detectedColumns: headerRow.map((cell) => String(cell ?? "")),
+  };
 }
 
 function downloadCsv(filename: string, rows: Record<string, string | number>[]) {
@@ -579,6 +921,10 @@ function EggsSection({
     crackedEggs: 0,
     notes: "",
   });
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<EggImportSummary | null>(
+    null,
+  );
 
   const totalEggs = form.coop1Eggs + form.coop2Eggs;
   const goodEggs = Math.max(totalEggs - form.crackedEggs, 0);
@@ -622,6 +968,88 @@ function EggsSection({
       },
       "Egg log deleted.",
     );
+  }
+
+  async function uploadEggSpreadsheet(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setImporting(true);
+
+    try {
+      const rows = await readSpreadsheetRows(file);
+      const parsed = parseEggImportRows(rows);
+      const importWarnings = [...parsed.warnings];
+      const uniqueEntries = Array.from(
+        new Map(parsed.entries.map((entry) => [entry.date, entry])).values(),
+      );
+      const duplicateRows = parsed.entries.length - uniqueEntries.length;
+
+      if (duplicateRows > 0) {
+        importWarnings.push(
+          `${duplicateRows} duplicate date row${duplicateRows === 1 ? "" : "s"} in the file were collapsed; the last row for each date was used.`,
+        );
+      }
+
+      if (!uniqueEntries.length) {
+        setImportSummary({
+          fileName: file.name,
+          imported: 0,
+          replaced: 0,
+          skipped: parsed.skippedRows,
+          warnings: importWarnings.length
+            ? importWarnings
+            : ["No valid egg rows were found."],
+          detectedColumns: parsed.detectedColumns,
+          preview: [],
+        });
+        return;
+      }
+
+      const incomingDates = new Set(uniqueEntries.map((entry) => entry.date));
+      const replaced = state.eggLogs.filter((log) =>
+        incomingDates.has(log.date),
+      ).length;
+      const nextEggLogs = [
+        ...state.eggLogs.filter((log) => !incomingDates.has(log.date)),
+        ...uniqueEntries,
+      ].sort((a, b) => a.date.localeCompare(b.date));
+
+      updateState(
+        {
+          ...state,
+          eggLogs: nextEggLogs,
+        },
+        `Imported ${uniqueEntries.length} egg log${uniqueEntries.length === 1 ? "" : "s"} from ${file.name}.`,
+      );
+
+      setImportSummary({
+        fileName: file.name,
+        imported: uniqueEntries.length,
+        replaced,
+        skipped: parsed.skippedRows,
+        warnings: importWarnings,
+        detectedColumns: parsed.detectedColumns,
+        preview: uniqueEntries.slice(0, 5),
+      });
+    } catch (error) {
+      setImportSummary({
+        fileName: file.name,
+        imported: 0,
+        replaced: 0,
+        skipped: 0,
+        warnings: [
+          error instanceof Error
+            ? error.message
+            : "The spreadsheet could not be imported.",
+        ],
+        detectedColumns: [],
+        preview: [],
+      });
+    } finally {
+      setImporting(false);
+    }
   }
 
   return (
@@ -690,6 +1118,78 @@ function EggsSection({
       </section>
 
       <section className="admin-panel admin-span-8">
+        <div className="admin-panel-header">
+          <div>
+            <p className="admin-eyebrow">Bulk import</p>
+            <h2>Upload Andrea&apos;s egg spreadsheet</h2>
+          </div>
+          <Upload size={20} />
+        </div>
+
+        <div className="admin-import-layout">
+          <label className="admin-upload-box">
+            <input
+              type="file"
+              accept=".xlsx,.csv,.tsv,.txt"
+              onChange={(event) => {
+                void uploadEggSpreadsheet(event.currentTarget.files?.[0] || null);
+                event.currentTarget.value = "";
+              }}
+            />
+            <Upload size={22} />
+            <strong>
+              {importing ? "Reading spreadsheet..." : "Choose spreadsheet"}
+            </strong>
+            <span>.xlsx, .csv, or .tsv files</span>
+          </label>
+
+          <div className="admin-import-help">
+            <strong>Columns this importer understands</strong>
+            <p>
+              Date or Fecha, Coop 1, Coop 2, Cracked, Total Eggs, and Notes.
+              Existing dates are updated so Andrea can safely import older
+              months without making duplicate daily logs.
+            </p>
+          </div>
+        </div>
+
+        {importSummary ? (
+          <div className="admin-import-summary">
+            <div className="admin-summary-strip">
+              <span>{importSummary.imported} imported</span>
+              <span>{importSummary.replaced} updated</span>
+              <span>{importSummary.skipped} skipped</span>
+            </div>
+            <p>
+              <strong>{importSummary.fileName}</strong>
+              {importSummary.detectedColumns.length
+                ? ` columns: ${importSummary.detectedColumns.join(", ")}`
+                : ""}
+            </p>
+            {importSummary.warnings.length ? (
+              <div className="admin-warning-list">
+                {importSummary.warnings.map((warning) => (
+                  <span key={warning}>{warning}</span>
+                ))}
+              </div>
+            ) : null}
+            {importSummary.preview.length ? (
+              <AdminTable
+                headers={["Preview Date", "Coop 1", "Coop 2", "Cracked", "Notes"]}
+                rows={importSummary.preview.map((entry) => [
+                  entry.date,
+                  entry.coop1Eggs,
+                  entry.coop2Eggs,
+                  entry.crackedEggs,
+                  entry.notes || "-",
+                ])}
+              />
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="admin-panel admin-span-12">
         <div className="admin-panel-header">
           <div>
             <p className="admin-eyebrow">History</p>
