@@ -1,26 +1,249 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fbf6ec;
+  --foreground: #314034;
+  --card: #fffdf8;
+  --card-soft: #f5ead8;
+  --cream: #fff9ed;
+  --sage: #b9c8aa;
+  --olive: #718266;
+  --forest: #607a65;
+  --terracotta: #c98468;
+  --mustard: #e1b85d;
+  --clay: #b87961;
+  --base-moss: #9aae8d;
+  --base-harvest: #e4bd67;
+  --base-clay: #d49a7d;
+  --base-plum: #b995a0;
+  --muted: #7d8879;
+  --shadow: 0 22px 58px rgb(124 96 55 / 10%);
+  --shadow-soft: 0 12px 30px rgb(124 96 55 / 8%);
+  --line: rgb(113 130 102 / 13%);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-plus-jakarta);
   --font-mono: var(--font-geist-mono);
+}
+
+html[data-theme="daylight"] {
+  --background: #fbf6ec;
+  --foreground: #314034;
+  --card: #fffdf8;
+  --card-soft: #f5ead8;
+  --cream: #fff9ed;
+  --sage: #b9c8aa;
+  --olive: #718266;
+  --forest: #607a65;
+  --terracotta: #c98468;
+  --mustard: #e1b85d;
+  --clay: #b87961;
+  --base-moss: #9aae8d;
+  --base-harvest: #e4bd67;
+  --base-clay: #d49a7d;
+  --base-plum: #b995a0;
+  --muted: #7d8879;
+  --shadow: 0 22px 58px rgb(124 96 55 / 10%);
+  --shadow-soft: 0 12px 30px rgb(124 96 55 / 8%);
+  --line: rgb(113 130 102 / 13%);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #f4ecdf;
+    --foreground: #344137;
+    --card: #fff8ec;
+    --card-soft: #eadfce;
+    --cream: #fff4e3;
+    --sage: #aebf9e;
+    --olive: #718266;
+    --forest: #607a65;
+    --terracotta: #c98468;
+    --mustard: #dcb866;
+    --clay: #af7863;
+    --base-moss: #98aa87;
+    --base-harvest: #ddba68;
+    --base-clay: #cf9678;
+    --base-plum: #b18d9a;
+    --muted: #7b8579;
+    --shadow: 0 24px 64px rgb(95 72 42 / 13%);
+    --shadow-soft: 0 12px 34px rgb(95 72 42 / 10%);
+    --line: rgb(113 130 102 / 14%);
   }
+}
+
+html[data-theme="nighttime"] {
+  --background: #38372f;
+  --foreground: #fff5e5;
+  --card: #484437;
+  --card-soft: #56513f;
+  --cream: #625b47;
+  --sage: #a8b58f;
+  --olive: #c2c99d;
+  --forest: #cbd7ad;
+  --terracotta: #d59b7f;
+  --mustard: #e3c06b;
+  --clay: #d0a18a;
+  --base-moss: #a9b88a;
+  --base-harvest: #e0bd68;
+  --base-clay: #d29579;
+  --base-plum: #d0a9b3;
+  --muted: #e0d3bd;
+  --shadow: 0 24px 70px rgb(20 18 14 / 22%);
+  --shadow-soft: 0 14px 38px rgb(20 18 14 / 16%);
+  --line: rgb(255 245 229 / 13%);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-plus-jakarta), Arial, Helvetica, sans-serif;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+.input {
+  min-height: 3.35rem;
+  width: 100%;
+  border-radius: 1.35rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 82%, var(--card-soft));
+  padding: 0 1rem;
+  color: var(--foreground);
+  outline: none;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%);
+}
+
+.input:focus {
+  border-color: var(--base-moss);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--base-moss), transparent 76%);
+}
+
+textarea.input {
+  resize: vertical;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--base-harvest), transparent 78%), transparent 30rem),
+    radial-gradient(circle at 80% 12%, color-mix(in srgb, var(--base-moss), transparent 74%), transparent 28rem),
+    radial-gradient(circle at 8% 78%, color-mix(in srgb, var(--base-plum), transparent 84%), transparent 22rem),
+    radial-gradient(circle at 92% 82%, color-mix(in srgb, var(--base-clay), transparent 82%), transparent 24rem),
+    linear-gradient(180deg, var(--background), color-mix(in srgb, var(--background), white 30%));
+  color: var(--foreground);
+}
+
+.premium-card {
+  border-radius: 1.75rem;
+  background: color-mix(in srgb, var(--card) 94%, white);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--line);
+}
+
+.floating-card {
+  border-radius: 2rem;
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(18px);
+}
+
+.soft-panel {
+  border-radius: 1.5rem;
+  background: color-mix(in srgb, var(--card-soft) 70%, var(--card));
+}
+
+.primary-button {
+  border-radius: 999px;
+  background: var(--forest);
+  color: var(--background);
+  font-weight: 900;
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--forest), transparent 78%);
+}
+
+.secondary-button {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--olive), transparent 62%);
+  background: color-mix(in srgb, var(--cream) 78%, var(--card));
+  color: var(--forest);
+  font-weight: 900;
+}
+
+.terracotta-button {
+  border-radius: 999px;
+  background: var(--terracotta);
+  color: var(--background);
+  font-weight: 900;
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--terracotta), transparent 78%);
+}
+
+.organic-illustration {
+  background:
+    radial-gradient(circle at 28% 28%, rgb(255 250 240 / 92%) 0 16%, transparent 17%),
+    radial-gradient(circle at 68% 38%, rgb(215 166 64 / 46%) 0 12%, transparent 13%),
+    radial-gradient(circle at 52% 72%, rgb(143 168 137 / 45%) 0 18%, transparent 19%),
+    radial-gradient(circle at 22% 78%, color-mix(in srgb, var(--base-plum), transparent 55%) 0 10%, transparent 11%),
+    color-mix(in srgb, var(--card-soft) 62%, var(--sage));
+}
+
+.tap-rise:hover {
+  transform: translateY(-2px);
+}
+
+.tone-card {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--tone), transparent 82%), transparent 64%),
+    color-mix(in srgb, var(--card) 94%, white);
+}
+
+.tone-moss {
+  --tone: var(--base-moss);
+  --tone-ink: color-mix(in srgb, var(--base-moss), var(--foreground) 28%);
+  --tone-soft: color-mix(in srgb, var(--base-moss), transparent 82%);
+}
+
+.tone-harvest {
+  --tone: var(--base-harvest);
+  --tone-ink: color-mix(in srgb, var(--base-harvest), var(--foreground) 34%);
+  --tone-soft: color-mix(in srgb, var(--base-harvest), transparent 80%);
+}
+
+.tone-clay {
+  --tone: var(--base-clay);
+  --tone-ink: color-mix(in srgb, var(--base-clay), var(--foreground) 32%);
+  --tone-soft: color-mix(in srgb, var(--base-clay), transparent 82%);
+}
+
+.tone-plum {
+  --tone: var(--base-plum);
+  --tone-ink: color-mix(in srgb, var(--base-plum), var(--foreground) 24%);
+  --tone-soft: color-mix(in srgb, var(--base-plum), transparent 82%);
+}
+
+.tone-icon {
+  background: var(--tone-soft);
+  color: var(--tone-ink);
 }
