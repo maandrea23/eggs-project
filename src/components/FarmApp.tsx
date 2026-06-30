@@ -526,15 +526,16 @@ export default function FarmApp() {
             return (
               <button
                 key={tab.id}
-                className={`flex h-14 flex-col items-center justify-center gap-1 rounded-[1.25rem] text-[10px] font-black ${
+                className={`grid h-14 place-items-center rounded-[1.25rem] ${
                   selected
                     ? "bg-[var(--base-moss)] text-[var(--foreground)] shadow-sm"
                     : "text-[var(--muted)]"
                 }`}
                 onClick={() => setActiveTab(tab.id)}
+                aria-label={tab.label}
+                title={tab.label}
               >
-                <Icon size={19} />
-                {tab.label}
+                <Icon size={22} />
               </button>
             );
           })}
