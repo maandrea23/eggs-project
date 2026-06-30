@@ -16,6 +16,7 @@ import {
   HeartPulse,
   Home,
   Package,
+  PiggyBank,
   Plus,
   ReceiptText,
   RefreshCw,
@@ -51,6 +52,7 @@ import {
 } from "@/lib/calculations";
 import { createDemoFarmState, createFreshFarmState } from "@/lib/demo-data";
 import { loadFarmState, saveFarmState } from "@/lib/local-store";
+import InvestmentSection from "@/components/InvestmentSection";
 import type {
   Coop,
   Expense,
@@ -67,6 +69,7 @@ type AdminSection =
   | "flock"
   | "inventory"
   | "health"
+  | "investment"
   | "reports";
 
 type DatabaseStatus = "checking" | "ready" | "local";
@@ -111,6 +114,7 @@ const adminNav: AdminNavItem[] = [
   { id: "flock", label: "Coops", icon: Bird },
   { id: "inventory", label: "Inventory", icon: Boxes },
   { id: "health", label: "Health", icon: HeartPulse },
+  { id: "investment", label: "Investment", icon: PiggyBank },
   { id: "reports", label: "Reports", icon: BarChart3 },
 ];
 
@@ -729,6 +733,10 @@ export default function FarmAdminPage() {
 
           {activeSection === "health" ? (
             <HealthSection state={state} updateState={updateState} />
+          ) : null}
+
+          {activeSection === "investment" ? (
+            <InvestmentSection state={state} />
           ) : null}
 
           {activeSection === "reports" ? (

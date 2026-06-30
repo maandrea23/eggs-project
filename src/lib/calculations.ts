@@ -7,7 +7,13 @@ import {
   startOfMonth,
   subDays,
 } from "date-fns";
-import type { Alert, FarmState, Insight } from "./types";
+import type {
+  Alert,
+  FarmState,
+  Insight,
+  InvestmentCategory,
+  InvestmentItem,
+} from "./types";
 
 export const CARTON_SIZE = 30;
 
@@ -226,6 +232,77 @@ export function buildAlerts(state: FarmState): Alert[] {
   return alerts.slice(0, 5);
 }
 
+export const INVESTMENT_CATEGORIES: {
+  key: InvestmentCategory;
+  label: string;
+  color: string;
+}[] = [
+  { key: "galpon_construccion", label: "Galpon - Construccion", color: "var(--base-clay)" },
+  { key: "galpon_materiales_olga", label: "Galpon - Materiales OLGA", color: "var(--base-harvest)" },
+  { key: "galpon_materiales_homecenter", label: "Galpon - Materiales Homecenter", color: "var(--base-moss)" },
+  { key: "galpon_materiales_laroca", label: "Galpon - Materiales La Roca", color: "var(--base-plum)" },
+  { key: "gallinas_compra", label: "Gallinas - Compra", color: "#e8c4a0" },
+  { key: "gallinas_alimento", label: "Gallinas - Alimento", color: "#c4d4b0" },
+  { key: "gallinas_medicina_vacunas", label: "Gallinas - Medicina/Vacunas", color: "#d4b0c4" },
+  { key: "gallinas_implementos", label: "Gallinas - Implementos", color: "#b0c4d4" },
+  { key: "gastos_semanales", label: "Gastos Semanales Pre-Produccion", color: "#e0d0a0" },
+];
+
+export function calculateInvestmentByCategory(
+  investments: InvestmentItem[],
+): Record<InvestmentCategory, number> {
+  const result: Record<string, number> = {};
+  for (const inv of investments) {
+    result[inv.category] = (result[inv.category] ?? 0) + inv.totalPrice;
+  }
+  return result as Record<InvestmentCategory, number>;
+}
+
+export function calculateTotalInvestment(investments: InvestmentItem[]): number {
+  return investments.reduce((sum, inv) => sum + inv.totalPrice, 0);
+}
+
+export function calculateInvestmentBreakdown(
+  investments: InvestmentItem[],
+) {
+  const byCategory = calculateInvestmentByCategory(investments);
+  const total = calculateTotalInvestment(investments);
+
+  return {
+    total,
+    byCategory,
+    categories: INVESTMENT_CATEGORIES.map((cat) => ({
+      ...cat,
+      amount: byCategory[cat.key] ?? 0,
+      percentage: total ? ((byCategory[cat.key] ?? 0) / total) * 100 : 0,
+    })),
+  };
+}
+
+export function getGalponTotal(investments: InvestmentItem[]): number {
+  const galponCategories: InvestmentCategory[] = [
+    "galpon_construccion",
+    "galpon_materiales_olga",
+    "galpon_materiales_homecenter",
+    "galpon_materiales_laroca",
+  ];
+  return investments
+    .filter((inv) => galponCategories.includes(inv.category))
+    .reduce((sum, inv) => sum + inv.totalPrice, 0);
+}
+
+export function getBirdsTotalInvestment(investments: InvestmentItem[]): number {
+  const birdCategories: InvestmentCategory[] = [
+    "gallinas_compra",
+    "gallinas_alimento",
+    "gallinas_medicina_vacunas",
+    "gallinas_implementos",
+  ];
+  return investments
+    .filter((inv) => birdCategories.includes(inv.category))
+    .reduce((sum, inv) => sum + inv.totalPrice, 0);
+}
+
 export function buildInsights(state: FarmState): Insight[] {
   const metrics = calculateFarmMetrics(state);
   const thisWeek = state.eggLogs.filter(
@@ -248,6 +325,10 @@ export function buildInsights(state: FarmState): Insight[] {
   const productionChange = previousWeekEggs
     ? ((thisWeekEggs - previousWeekEggs) / previousWeekEggs) * 100
     : 0;
+
+  const totalInvestment = calculateTotalInvestment(
+    state.investments ?? [],
+  );
 
   return [
     {
@@ -292,5 +373,15 @@ export function buildInsights(state: FarmState): Insight[] {
       value: `${formatNumber(Math.abs(productionChange))}%`,
       detail: "Compared with the previous 7 days.",
     },
+    ...(totalInvestment > 0
+      ? [
+          {
+            id: "total-investment",
+            title: "Total inversion hasta la fecha",
+            value: formatCop(totalInvestment),
+            detail: `Galpon + gallinas + alimento + implementos`,
+          } as Insight,
+        ]
+      : []),
   ];
 }

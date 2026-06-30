@@ -108,6 +108,34 @@ export type OfflineQueueItem = {
   syncedAt?: string;
 };
 
+export type InvestmentCategory =
+  | "galpon_construccion"
+  | "galpon_materiales_olga"
+  | "galpon_materiales_homecenter"
+  | "galpon_materiales_laroca"
+  | "gallinas_compra"
+  | "gallinas_alimento"
+  | "gallinas_medicina_vacunas"
+  | "gallinas_implementos"
+  | "gastos_semanales"
+  | "cuidandero"
+  | "otros";
+
+export type InvestmentItem = {
+  id: string;
+  category: InvestmentCategory;
+  subcategory: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  totalPrice: number;
+  date?: string;
+  supplier?: string;
+};
+
+export type UserRole = "owner" | "operator";
+
 export type FarmState = {
   coops: Coop[];
   birdMovements: BirdMovement[];
@@ -119,6 +147,7 @@ export type FarmState = {
   inventoryItems: InventoryItem[];
   healthRecords: HealthRecord[];
   maintenanceTasks: MaintenanceTask[];
+  investments: InvestmentItem[];
   offlineQueue: OfflineQueueItem[];
 };
 

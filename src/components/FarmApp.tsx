@@ -19,6 +19,7 @@ import {
   LogOut,
   Moon,
   Package,
+  PiggyBank,
   Plus,
   ReceiptText,
   RefreshCw,
@@ -52,6 +53,7 @@ import {
 } from "@/lib/calculations";
 import { createFreshFarmState } from "@/lib/demo-data";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
+import InvestmentSection from "@/components/InvestmentSection";
 import type {
   Coop,
   Expense,
@@ -66,11 +68,12 @@ type TabKey =
   | "eggs"
   | "sales"
   | "expenses"
+  | "investment"
   | "more";
 
 type MoreSectionKey = "inventory" | "health" | "reports";
 
-type UserMode = "guest";
+type UserMode = "owner" | "operator";
 type OrganicTone = "moss" | "harvest" | "clay" | "plum";
 type ThemeMode = "daylight" | "nighttime";
 type DatabaseStatus = "checking" | "ready" | "local";
@@ -112,6 +115,7 @@ const tabs: { id: TabKey; label: string; icon: React.ComponentType<{ size?: numb
     { id: "coops", label: "Coops", icon: Bird },
     { id: "sales", label: "Sales", icon: ShoppingCart },
     { id: "expenses", label: "Expenses", icon: ReceiptText },
+    { id: "investment", label: "Investment", icon: PiggyBank },
     { id: "more", label: "More", icon: Ellipsis },
   ];
 
@@ -207,6 +211,9 @@ export default function FarmApp() {
     window.localStorage.setItem(THEME_KEY, themeMode);
   }, [themeMode]);
 
+  const operatorTabs: TabKey[] = ["dashboard", "eggs", "expenses"];
+  const allowedTabs = userMode === "operator" ? operatorTabs : tabs.map((t) => t.id);
+
   const metrics = useMemo(() => calculateFarmMetrics(state), [state]);
   const alerts = useMemo(() => buildAlerts(state), [state]);
   const insights = useMemo(() => buildInsights(state), [state]);
@@ -249,12 +256,20 @@ export default function FarmApp() {
     };
   }
 
-  function handleDemoLogin() {
-    setUserMode("guest");
+  function handleOwnerLogin() {
+    setUserMode("owner");
     setAuthMessage(
       databaseStatus === "ready"
-        ? "Owner mode active. Data saves on this device and syncs to Dailey."
+        ? "Owner mode active. Full access to all farm data."
         : "Owner mode active. Data saves on this device until Dailey is connected.",
+    );
+  }
+
+  function handleOperatorLogin() {
+    setUserMode("operator");
+    setActiveTab("eggs");
+    setAuthMessage(
+      "Operator mode active. You can only log daily production (eggs, feed, vaccines).",
     );
   }
 
@@ -308,6 +323,12 @@ export default function FarmApp() {
         </div>
       </main>
     );
+  }
+
+  const effectiveTab = allowedTabs.includes(activeTab) ? activeTab : "dashboard";
+
+  if (userMode === "operator" && activeTab !== effectiveTab) {
+    setActiveTab(effectiveTab);
   }
 
   if (!userMode) {
@@ -371,10 +392,17 @@ export default function FarmApp() {
             <div className="mt-5 grid gap-3">
               <button
                 className="primary-button flex h-14 items-center justify-center gap-2 px-4 text-base"
-                onClick={handleDemoLogin}
+                onClick={handleOwnerLogin}
               >
                 <Home size={20} />
-                Owner Mode
+                Owner Mode — Full access
+              </button>
+              <button
+                className="secondary-button flex h-14 items-center justify-center gap-2 px-4 text-base"
+                onClick={handleOperatorLogin}
+              >
+                <ClipboardList size={20} />
+                Operator Mode — Daily production only
               </button>
             </div>
 
@@ -410,7 +438,9 @@ export default function FarmApp() {
                 How is the farm today?
               </h1>
               <p className="mt-2 hidden max-w-xl text-sm font-semibold leading-6 text-[var(--muted)] md:block">
-                Healthy animals, steady production, calm business.
+                {userMode === "operator"
+                  ? "Operator mode: record eggs, feed, and health daily."
+                  : "Healthy animals, steady production, calm business."}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -436,9 +466,9 @@ export default function FarmApp() {
           </div>
 
           <div className="mt-5 hidden gap-2 overflow-x-auto pb-1 md:flex lg:hidden">
-            {tabs.map((tab) => {
+            {tabs.filter((t) => allowedTabs.includes(t.id)).map((tab) => {
               const Icon = tab.icon;
-              const selected = activeTab === tab.id;
+              const selected = effectiveTab === tab.id;
 
               return (
                 <button
@@ -466,7 +496,7 @@ export default function FarmApp() {
             message={authMessage}
           />
 
-          {activeTab === "dashboard" ? (
+          {effectiveTab === "dashboard" ? (
             <DashboardSection
               state={state}
               metrics={metrics}
@@ -476,7 +506,7 @@ export default function FarmApp() {
               onQuickEgg={() => setActiveTab("eggs")}
             />
           ) : null}
-          {activeTab === "eggs" ? (
+          {effectiveTab === "eggs" ? (
             <EggLoggingSection
               state={state}
               updateState={updateState}
@@ -484,18 +514,22 @@ export default function FarmApp() {
               online={online}
             />
           ) : null}
-          {activeTab === "sales" ? (
-            <SalesSection
-              state={state}
-              updateState={updateState}
-              queueOfflineItem={queueOfflineItem}
-              cartonsAvailable={metrics.cartonsAvailable}
-            />
+          {effectiveTab === "sales" ? (
+            userMode === "owner" ? (
+              <SalesSection
+                state={state}
+                updateState={updateState}
+                queueOfflineItem={queueOfflineItem}
+                cartonsAvailable={metrics.cartonsAvailable}
+              />
+            ) : null
           ) : null}
-          {activeTab === "coops" ? (
-            <CoopSection state={state} updateState={updateState} />
+          {effectiveTab === "coops" ? (
+            userMode === "owner" ? (
+              <CoopSection state={state} updateState={updateState} />
+            ) : null
           ) : null}
-          {activeTab === "expenses" ? (
+          {effectiveTab === "expenses" ? (
             <FeedExpenseSection
               state={state}
               updateState={updateState}
@@ -503,25 +537,32 @@ export default function FarmApp() {
               metrics={metrics}
             />
           ) : null}
-          {activeTab === "more" ? (
-            <MoreSection
-              state={state}
-              metrics={metrics}
-              rows={reportRows}
-              moreSection={moreSection}
-              setMoreSection={setMoreSection}
-              updateState={updateState}
-              onReset={handleResetDemoData}
-            />
+          {effectiveTab === "investment" ? (
+            userMode === "owner" ? (
+              <InvestmentSection state={state} />
+            ) : null
+          ) : null}
+          {effectiveTab === "more" ? (
+            userMode === "owner" ? (
+              <MoreSection
+                state={state}
+                metrics={metrics}
+                rows={reportRows}
+                moreSection={moreSection}
+                setMoreSection={setMoreSection}
+                updateState={updateState}
+                onReset={handleResetDemoData}
+              />
+            ) : null
           ) : null}
         </div>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 px-3 pb-3 md:hidden">
         <div className="floating-card grid grid-cols-6 gap-1 p-2">
-          {tabs.map((tab) => {
+          {tabs.filter((t) => allowedTabs.includes(t.id)).map((tab) => {
             const Icon = tab.icon;
-            const selected = activeTab === tab.id;
+            const selected = effectiveTab === tab.id;
 
             return (
               <button
