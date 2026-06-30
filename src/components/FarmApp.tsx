@@ -81,6 +81,15 @@ const THEME_KEY = "brianna-egg-theme-mode";
 const makeId = (prefix: string) =>
   `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Date.now()}`;
 
+function formatNumericInputValue(value: number) {
+  return Number.isNaN(value) || value === 0 ? "" : String(value);
+}
+
+function parseNumericInputValue(value: string) {
+  const digitsOnly = value.replace(/\D/g, "");
+  return digitsOnly ? Number.parseInt(digitsOnly, 10) : 0;
+}
+
 async function saveFarmStateToDailey(state: FarmState) {
   const response = await fetch("/api/farm-state", {
     method: "PUT",
@@ -2223,11 +2232,13 @@ function LargeNumberField({
       </span>
       <input
         className="mt-4 w-full bg-transparent text-center text-5xl font-black tracking-tight outline-none"
-        type="number"
-        min="0"
+        type="text"
         inputMode="numeric"
-        value={Number.isNaN(value) ? 0 : value}
-        onChange={(event) => onChange(Number(event.target.value))}
+        pattern="[0-9]*"
+        autoComplete="off"
+        value={formatNumericInputValue(value)}
+        onChange={(event) => onChange(parseNumericInputValue(event.target.value))}
+        onFocus={(event) => event.currentTarget.select()}
       />
     </label>
   );
@@ -2332,11 +2343,13 @@ function NumberField({
     <Field label={label}>
       <input
         className="input"
-        type="number"
-        min="0"
+        type="text"
         inputMode="numeric"
-        value={Number.isNaN(value) ? 0 : value}
-        onChange={(event) => onChange(Number(event.target.value))}
+        pattern="[0-9]*"
+        autoComplete="off"
+        value={formatNumericInputValue(value)}
+        onChange={(event) => onChange(parseNumericInputValue(event.target.value))}
+        onFocus={(event) => event.currentTarget.select()}
       />
     </Field>
   );
