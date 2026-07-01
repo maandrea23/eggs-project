@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { APP_VERSION } from "@/lib/app-version";
 import "./globals.css";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -29,7 +30,12 @@ export default function RootLayout({
       lang="en"
       className={`${plusJakarta.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <div className="app-version-badge" aria-label={`App version ${APP_VERSION}`}>
+          {APP_VERSION}
+        </div>
+        {children}
+      </body>
     </html>
   );
 }
