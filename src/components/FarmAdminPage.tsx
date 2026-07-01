@@ -15,7 +15,9 @@ import {
   Egg,
   HeartPulse,
   Home,
+  LineChart as LineChartIcon,
   Package,
+  PieChart as PieChartIcon,
   PiggyBank,
   Plus,
   ReceiptText,
@@ -23,7 +25,9 @@ import {
   Save,
   Settings,
   ShoppingCart,
+  Moon,
   Sprout,
+  Sun,
   Trash2,
   Upload,
   Wallet,
@@ -36,6 +40,11 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  Line,
+  LineChart as RechartsLineChart,
+  Pie,
+  PieChart as RechartsPieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -52,7 +61,13 @@ import {
   getReportRows,
   getSalesChartData,
 } from "@/lib/calculations";
-import { createDemoFarmState, createFreshFarmState } from "@/lib/demo-data";
+import {
+  EGG_SIZE_ORDER,
+  formatEggSizeBreakdown,
+  getEggSizeTotal,
+  normalizeEggSizeBreakdown,
+} from "@/lib/egg-classification";
+import { createFreshFarmState } from "@/lib/farm-state-defaults";
 import { loadFarmState, saveFarmState } from "@/lib/local-store";
 import InvestmentSection from "@/components/InvestmentSection";
 import type {
@@ -61,6 +76,7 @@ import type {
   FarmState,
   HealthRecord,
   InventoryItem,
+  EggSizeCategory,
 } from "@/lib/types";
 
 type AdminSection =
@@ -75,6 +91,11 @@ type AdminSection =
   | "reports";
 
 type DatabaseStatus = "checking" | "ready" | "local";
+type ReportGraphType = "production" | "finance" | "feed";
+type ReportGraphStyle = "bar" | "line" | "area" | "pie";
+type ThemeMode = "daylight" | "nighttime";
+
+const THEME_KEY = "brianna-egg-theme-mode";
 
 type AdminNavItem = {
   id: AdminSection;
@@ -175,8 +196,12 @@ const inventoryCategories: InventoryItem["category"][] = [
 
 const adminChartMetricLabels: Record<string, string> = {
   cartons: "Cartons",
+  cartonsSold: "Cartons sold",
+  expensesCop: "Expenses",
+  goodEggs: "Good eggs",
   purchasedKg: "Purchased kg",
   revenueCop: "Revenue",
+  salesCop: "Sales",
   spendCop: "Feed spend",
   usedKg: "Used kg",
 };
@@ -186,14 +211,26 @@ function formatAdminChartTooltipValue(value: unknown, name: unknown) {
   const numberValue = Number(value);
 
   return [
-    metric === "revenueCop" || metric === "spendCop"
+    metric === "revenueCop" ||
+    metric === "spendCop" ||
+    metric === "salesCop" ||
+    metric === "expensesCop"
       ? formatCop(Number.isFinite(numberValue) ? numberValue : 0)
       : formatNumber(Number.isFinite(numberValue) ? numberValue : 0),
     adminChartMetricLabels[metric] ?? metric,
   ];
 }
 
-async function saveFarmStateToDailey(state: FarmState) {
+function formatAdminPieTooltipValue(value: unknown, name: unknown, item: unknown) {
+  const payload =
+    item && typeof item === "object" && "payload" in item
+      ? (item as { payload?: { metric?: string } }).payload
+      : undefined;
+
+  return formatAdminChartTooltipValue(value, payload?.metric ?? name);
+}
+
+async function saveFarmRecord(state: FarmState) {
   const response = await fetch("/api/farm-state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -204,7 +241,7 @@ async function saveFarmStateToDailey(state: FarmState) {
     const body = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(body?.error || "Dailey database save failed.");
+    throw new Error(body?.error || "Farm data save failed.");
   }
 }
 
@@ -257,6 +294,40 @@ function findColumn(headers: string[], aliases: string[]) {
       (alias) => header === alias || header.includes(alias),
     ),
   );
+}
+
+function findEggSizeColumn(headers: string[], category: EggSizeCategory) {
+  const aliases: Record<EggSizeCategory, string[]> = {
+    C: ["c", "sizec", "huevosc", "clasec", "categoriac"],
+    B: ["b", "sizeb", "huevosb", "claseb", "categoriab"],
+    A: ["a", "sizea", "huevosa", "clasea", "categoriaa"],
+    AA: ["aa", "sizeaa", "huevosaa", "claseaa", "categoriaaa"],
+    AAA: ["aaa", "sizeaaa", "huevosaaa", "claseaaa", "categoriaaaa"],
+    Jumbo: ["jumbo", "jumbos", "sizejumbo", "huevosjumbo"],
+  };
+
+  return headers.findIndex((header) =>
+    aliases[category].some(
+      (alias) => header === alias || (alias.length > 1 && header.includes(alias)),
+    ),
+  );
+}
+
+function getEggSizeBreakdownFromRow(
+  row: SpreadsheetCell[],
+  columnMap: Partial<Record<EggSizeCategory, number>>,
+) {
+  const breakdown = normalizeEggSizeBreakdown();
+
+  EGG_SIZE_ORDER.forEach((category) => {
+    const columnIndex = columnMap[category];
+
+    if (columnIndex !== undefined && columnIndex >= 0) {
+      breakdown[category] = parseSpreadsheetNumber(row[columnIndex]);
+    }
+  });
+
+  return getEggSizeTotal(breakdown) > 0 ? breakdown : undefined;
 }
 
 function parseSpreadsheetDate(value: SpreadsheetCell) {
@@ -471,20 +542,23 @@ function parseEggImportRows(rows: SpreadsheetCell[][]): EggImportResult {
       "huevos",
       "totaleggs",
     ]);
+    const sizeIndex = EGG_SIZE_ORDER.findIndex(
+      (category) => findEggSizeColumn(headers, category) >= 0,
+    );
 
-    return dateIndex >= 0 && eggIndex >= 0;
+    return dateIndex >= 0 && (eggIndex >= 0 || sizeIndex >= 0);
   });
 
   const hasHeaders = headerRowIndex >= 0;
   const headerRow = hasHeaders
     ? compactRows[headerRowIndex]
-    : ["Date", "Coop 1", "Coop 2", "Cracked", "Notes"];
+    : ["Date", "Eggs", "Cracked", "Notes"];
   const headers = headerRow.map(normalizeHeader);
   const firstDataRowIndex = hasHeaders ? headerRowIndex + 1 : 0;
 
   if (!hasHeaders) {
     warnings.push(
-      "No header row was detected, so the importer assumed columns are Date, Coop 1, Coop 2, Cracked, Notes.",
+      "No header row was detected, so the importer assumed columns are Date, Eggs, Cracked, Notes.",
     );
   }
 
@@ -540,6 +614,12 @@ function parseEggImportRows(rows: SpreadsheetCell[][]): EggImportResult {
       "observaciones",
       "comments",
     ]),
+    sizeC: findEggSizeColumn(headers, "C"),
+    sizeB: findEggSizeColumn(headers, "B"),
+    sizeA: findEggSizeColumn(headers, "A"),
+    sizeAA: findEggSizeColumn(headers, "AA"),
+    sizeAAA: findEggSizeColumn(headers, "AAA"),
+    sizeJumbo: findEggSizeColumn(headers, "Jumbo"),
   };
 
   if (columnMap.date < 0) {
@@ -551,7 +631,25 @@ function parseEggImportRows(rows: SpreadsheetCell[][]): EggImportResult {
     };
   }
 
-  if (columnMap.coop1 < 0 && columnMap.coop2 < 0 && columnMap.total < 0) {
+  const hasSizeColumns = EGG_SIZE_ORDER.some(
+    (category) =>
+      columnMap[
+        `size${category}` as
+          | "sizeC"
+          | "sizeB"
+          | "sizeA"
+          | "sizeAA"
+          | "sizeAAA"
+          | "sizeJumbo"
+      ] >= 0,
+  );
+
+  if (
+    columnMap.coop1 < 0 &&
+    columnMap.coop2 < 0 &&
+    columnMap.total < 0 &&
+    !hasSizeColumns
+  ) {
     return {
       entries: [],
       skippedRows: compactRows.length - firstDataRowIndex,
@@ -562,7 +660,13 @@ function parseEggImportRows(rows: SpreadsheetCell[][]): EggImportResult {
 
   if (columnMap.total >= 0 && columnMap.coop1 < 0 && columnMap.coop2 < 0) {
     warnings.push(
-      "Rows with Total Eggs but no coop split were imported into Coop 1.",
+      "Rows with Total Eggs were imported as the single coop's egg count.",
+    );
+  }
+
+  if (columnMap.coop2 >= 0) {
+    warnings.push(
+      "An older extra coop column was found and merged into the single coop's egg count.",
     );
   }
 
@@ -577,22 +681,34 @@ function parseEggImportRows(rows: SpreadsheetCell[][]): EggImportResult {
       return;
     }
 
-    const totalEggs =
-      columnMap.total >= 0 ? parseSpreadsheetNumber(row[columnMap.total]) : 0;
-    const coop1Eggs =
-      columnMap.coop1 >= 0
-        ? parseSpreadsheetNumber(row[columnMap.coop1])
-        : totalEggs;
-    const coop2Eggs =
-      columnMap.coop2 >= 0 ? parseSpreadsheetNumber(row[columnMap.coop2]) : 0;
     const crackedEggs =
       columnMap.cracked >= 0
         ? parseSpreadsheetNumber(row[columnMap.cracked])
         : 0;
     const notes =
       columnMap.notes >= 0 ? String(row[columnMap.notes] ?? "").trim() : "";
+    const sizeBreakdown = getEggSizeBreakdownFromRow(row, {
+      C: columnMap.sizeC,
+      B: columnMap.sizeB,
+      A: columnMap.sizeA,
+      AA: columnMap.sizeAA,
+      AAA: columnMap.sizeAAA,
+      Jumbo: columnMap.sizeJumbo,
+    });
+    const sizeTotal = getEggSizeTotal(sizeBreakdown);
+    const totalEggs =
+      columnMap.total >= 0
+        ? parseSpreadsheetNumber(row[columnMap.total])
+        : sizeTotal + crackedEggs;
+    const rawCoop1Eggs =
+      columnMap.coop1 >= 0
+        ? parseSpreadsheetNumber(row[columnMap.coop1])
+        : totalEggs;
+    const rawCoop2Eggs =
+      columnMap.coop2 >= 0 ? parseSpreadsheetNumber(row[columnMap.coop2]) : 0;
+    const coop1Eggs = rawCoop1Eggs + rawCoop2Eggs;
 
-    if (coop1Eggs + coop2Eggs + crackedEggs <= 0) {
+    if (coop1Eggs + crackedEggs <= 0) {
       skippedRows += 1;
       return;
     }
@@ -601,11 +717,12 @@ function parseEggImportRows(rows: SpreadsheetCell[][]): EggImportResult {
       id: makeId("egg-import"),
       date,
       coop1Eggs,
-      coop2Eggs,
+      coop2Eggs: 0,
       crackedEggs,
+      ...(sizeBreakdown ? { sizeBreakdown } : {}),
       notes:
         columnMap.total >= 0 && columnMap.coop1 < 0 && columnMap.coop2 < 0
-          ? [notes, "Imported from total egg count; no coop split in source."]
+          ? [notes, "Imported from total egg count."]
               .filter(Boolean)
               .join(" ")
           : notes,
@@ -643,20 +760,28 @@ function buildWeekStartMap(productionRows: SpreadsheetCell[][]) {
 }
 
 function buildEggNotes(row: SpreadsheetCell[], weekLabel: string) {
+  const sizeBreakdown = getAndreaProductionSizeBreakdown(row);
   const pieces = [
     weekLabel,
     String(getCell(row, 3) ?? "").trim(),
     parseSpreadsheetNumber(getCell(row, 4))
       ? `${parseSpreadsheetNumber(getCell(row, 4))} aves vivas`
       : "",
-    `C: ${parseSpreadsheetNumber(getCell(row, 6))}`,
-    `B: ${parseSpreadsheetNumber(getCell(row, 7))}`,
-    `A: ${parseSpreadsheetNumber(getCell(row, 8))}`,
-    `AA: ${parseSpreadsheetNumber(getCell(row, 9))}`,
-    `AAA: ${parseSpreadsheetNumber(getCell(row, 10))}`,
+    formatEggSizeBreakdown(sizeBreakdown),
   ].filter(Boolean);
 
   return pieces.join(" | ");
+}
+
+function getAndreaProductionSizeBreakdown(row: SpreadsheetCell[]) {
+  return normalizeEggSizeBreakdown({
+    C: parseSpreadsheetNumber(getCell(row, 6)),
+    B: parseSpreadsheetNumber(getCell(row, 7)),
+    A: parseSpreadsheetNumber(getCell(row, 8)),
+    AA: parseSpreadsheetNumber(getCell(row, 9)),
+    AAA: parseSpreadsheetNumber(getCell(row, 10)),
+    Jumbo: 0,
+  });
 }
 
 function parseAndreaProductionRows(
@@ -677,9 +802,11 @@ function parseAndreaProductionRows(
     }
 
     const crackedEggs = parseSpreadsheetNumber(getCell(row, 11));
+    const sizeBreakdown = getAndreaProductionSizeBreakdown(row);
     const totalEggs =
       parseSpreadsheetNumber(getCell(row, 12)) ||
-      parseSpreadsheetNumber(getCell(row, 5));
+      parseSpreadsheetNumber(getCell(row, 5)) ||
+      getEggSizeTotal(sizeBreakdown) + crackedEggs;
     const goodEggs = Math.max(totalEggs - crackedEggs, 0);
 
     if (goodEggs + crackedEggs <= 0) {
@@ -690,9 +817,10 @@ function parseAndreaProductionRows(
       {
         id: makeId("egg-import"),
         date,
-        coop1Eggs: goodEggs,
+        coop1Eggs: totalEggs,
         coop2Eggs: 0,
         crackedEggs,
+        sizeBreakdown,
         notes: buildEggNotes(row, currentWeek),
         synced: true,
         createdAt: nowIso(),
@@ -1027,23 +1155,12 @@ function parseAndreaCoops(
     return undefined;
   }
 
-  const coop1Hens = Math.ceil(latestAlive / 2);
-  const coop2Hens = Math.floor(latestAlive / 2);
-
   return [
     {
       id: "coop-1",
       name: "Coop 1",
-      capacity: 200,
-      hens: coop1Hens,
-      chicks: 0,
-      notes: "Imported from PRODUCCION ALIVE count.",
-    },
-    {
-      id: "coop-2",
-      name: "Coop 2",
-      capacity: 200,
-      hens: coop2Hens,
+      capacity: 400,
+      hens: latestAlive,
       chicks: 0,
       notes: "Imported from PRODUCCION ALIVE count.",
     },
@@ -1070,7 +1187,7 @@ function parseAndreaTemplateImport(
     ...parseGallinasInvestments(gallinasSheet?.data || []),
   ];
   const warnings: string[] = [
-    "Andrea's template tracks egg sizes instead of coop splits, so imported good eggs are stored in Coop 1 and size details are kept in notes/sales summaries.",
+    "Andrea's template tracks egg sizes, so imported egg totals are stored in the single coop and the size columns are preserved as weight categories.",
   ];
 
   if (!productionSheet) {
@@ -1162,11 +1279,21 @@ export default function FarmAdminPage() {
   const [online, setOnline] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState("");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("daylight");
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
     const handleOffline = () => setOnline(false);
     const loadTimer = window.setTimeout(() => {
+      const savedTheme = window.localStorage.getItem(THEME_KEY);
+
+      if (savedTheme === "daylight" || savedTheme === "nighttime") {
+        setThemeMode(savedTheme);
+        document.documentElement.dataset.theme = savedTheme;
+      } else {
+        document.documentElement.dataset.theme = "daylight";
+      }
+
       setOnline(navigator.onLine);
       const localState = loadFarmState();
       setState(localState);
@@ -1175,7 +1302,7 @@ export default function FarmAdminPage() {
       fetch("/api/farm-state")
         .then(async (response) => {
           if (!response.ok) {
-            throw new Error("Dailey database is not ready yet.");
+            throw new Error("Farm data is not ready yet.");
           }
 
           return (await response.json()) as { state: FarmState | null };
@@ -1184,10 +1311,10 @@ export default function FarmAdminPage() {
           if (databaseState) {
             setState(databaseState);
             saveFarmState(databaseState);
-            setNotice("Loaded the latest farm data from Dailey.");
+            setNotice("Loaded the latest farm data.");
           } else {
-            void saveFarmStateToDailey(localState);
-            setNotice("Started a fresh farm record in Dailey.");
+            void saveFarmRecord(localState);
+            setNotice("Started a fresh farm record.");
           }
 
           setDatabaseStatus("ready");
@@ -1212,6 +1339,15 @@ export default function FarmAdminPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!loaded) {
+      return;
+    }
+
+    document.documentElement.dataset.theme = themeMode;
+    window.localStorage.setItem(THEME_KEY, themeMode);
+  }, [loaded, themeMode]);
+
   const metrics = useMemo(() => calculateFarmMetrics(state), [state]);
   const alerts = useMemo(() => buildAlerts(state), [state]);
   const insights = useMemo(() => buildInsights(state), [state]);
@@ -1231,17 +1367,17 @@ export default function FarmAdminPage() {
     }
 
     setSyncing(true);
-    void saveFarmStateToDailey(nextState)
+    void saveFarmRecord(nextState)
       .then(() => {
         setDatabaseStatus("ready");
-        setNotice(`${message} Synced to Dailey.`);
+        setNotice(`${message} Farm records saved.`);
       })
       .catch((error) => {
         setDatabaseStatus("local");
         setNotice(
           error instanceof Error
-            ? `${message} Dailey sync paused: ${error.message}`
-            : `${message} Dailey sync paused.`,
+            ? `${message} Farm data save paused: ${error.message}`
+            : `${message} Farm data save paused.`,
         );
       })
       .finally(() => setSyncing(false));
@@ -1249,17 +1385,17 @@ export default function FarmAdminPage() {
 
   function syncNow() {
     setSyncing(true);
-    void saveFarmStateToDailey(state)
+    void saveFarmRecord(state)
       .then(() => {
         setDatabaseStatus("ready");
-        setNotice("Farm data synced to Dailey.");
+        setNotice("Farm data saved.");
       })
       .catch((error) => {
         setDatabaseStatus("local");
         setNotice(
           error instanceof Error
-            ? `Dailey sync failed: ${error.message}`
-            : "Dailey sync failed.",
+            ? `Farm data save failed: ${error.message}`
+            : "Farm data save failed.",
         );
       })
       .finally(() => setSyncing(false));
@@ -1280,8 +1416,8 @@ export default function FarmAdminPage() {
     <main className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand">
-          <div className="admin-brand-mark">
-            <Egg size={24} />
+          <div className="organic-illustration grid h-16 w-16 place-items-center rounded-[1.75rem] shadow-lg">
+            <Egg className="text-[var(--forest)]" size={30} />
           </div>
           <div>
             <p>Brianna Eggs</p>
@@ -1320,6 +1456,10 @@ export default function FarmAdminPage() {
           </div>
 
           <div className="admin-header-actions">
+            <AdminThemeToggle
+              themeMode={themeMode}
+              setThemeMode={setThemeMode}
+            />
             <StatusPill
               icon={online ? Cloud : CloudOff}
               label={online ? "Online" : "Offline"}
@@ -1329,14 +1469,14 @@ export default function FarmAdminPage() {
               icon={databaseStatus === "ready" ? CheckCircle2 : AlertTriangle}
               label={
                 databaseStatus === "checking"
-                  ? "Checking DB"
+                  ? "Checking data"
                   : databaseStatus === "ready"
-                    ? "Dailey DB"
-                    : "Local save"
+                    ? "Farm data ready"
+                    : "Saved on device"
               }
               tone={databaseStatus === "ready" ? "success" : "warning"}
             />
-            <button className="admin-icon-button" onClick={syncNow} title="Sync now">
+            <button className="admin-icon-button" onClick={syncNow} title="Save farm data">
               <RefreshCw className={syncing ? "animate-spin" : ""} size={18} />
             </button>
           </div>
@@ -1479,17 +1619,10 @@ function OverviewSection({
               <Tooltip />
               <Area
                 type="monotone"
-                dataKey="Coop 1"
+                dataKey="Eggs"
                 stroke="#4f7f64"
                 fill="#4f7f64"
                 fillOpacity={0.22}
-              />
-              <Area
-                type="monotone"
-                dataKey="Coop 2"
-                stroke="#c78643"
-                fill="#d8aa56"
-                fillOpacity={0.2}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -1582,6 +1715,7 @@ function EggsSection({
     coop1Eggs: 0,
     coop2Eggs: 0,
     crackedEggs: 0,
+    sizeBreakdown: normalizeEggSizeBreakdown(),
     notes: "",
   });
   const [importing, setImporting] = useState(false);
@@ -1589,10 +1723,21 @@ function EggsSection({
     null,
   );
 
-  const totalEggs = form.coop1Eggs + form.coop2Eggs;
+  const totalEggs = form.coop1Eggs;
   const goodEggs = Math.max(totalEggs - form.crackedEggs, 0);
   const cartons = Math.floor(goodEggs / 30);
   const looseEggs = goodEggs % 30;
+  const categorizedEggs = getEggSizeTotal(form.sizeBreakdown);
+
+  function updateSizeBreakdown(category: EggSizeCategory, value: number) {
+    setForm({
+      ...form,
+      sizeBreakdown: normalizeEggSizeBreakdown({
+        ...form.sizeBreakdown,
+        [category]: value,
+      }),
+    });
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -1619,6 +1764,7 @@ function EggsSection({
       coop1Eggs: 0,
       coop2Eggs: 0,
       crackedEggs: 0,
+      sizeBreakdown: normalizeEggSizeBreakdown(),
       notes: "",
     });
   }
@@ -1832,21 +1978,12 @@ function EggsSection({
               onChange={(event) => setForm({ ...form, date: event.target.value })}
             />
           </AdminField>
-          <AdminField label="Coop 1 eggs">
+          <AdminField label="Eggs collected">
             <input
               inputMode="numeric"
               value={form.coop1Eggs || ""}
               onChange={(event) =>
                 setForm({ ...form, coop1Eggs: parseNumber(event.target.value) })
-              }
-            />
-          </AdminField>
-          <AdminField label="Coop 2 eggs">
-            <input
-              inputMode="numeric"
-              value={form.coop2Eggs || ""}
-              onChange={(event) =>
-                setForm({ ...form, coop2Eggs: parseNumber(event.target.value) })
               }
             />
           </AdminField>
@@ -1859,6 +1996,16 @@ function EggsSection({
               }
             />
           </AdminField>
+          <div className="egg-size-grid">
+            {EGG_SIZE_ORDER.map((category) => (
+              <EggSizeEntry
+                key={category}
+                category={category}
+                value={form.sizeBreakdown[category]}
+                onChange={(value) => updateSizeBreakdown(category, value)}
+              />
+            ))}
+          </div>
           <AdminField label="Notes">
             <textarea
               value={form.notes}
@@ -1869,6 +2016,7 @@ function EggsSection({
           <div className="admin-summary-strip">
             <span>Total {totalEggs}</span>
             <span>Good {goodEggs}</span>
+            <span>Categorized {categorizedEggs}</span>
             <span>{cartons} cartons</span>
             <span>{looseEggs} loose</span>
           </div>
@@ -1906,11 +2054,11 @@ function EggsSection({
           </label>
 
           <div className="admin-import-help">
-            <strong>Columns this importer understands</strong>
+            <strong>Field names for clean mapping</strong>
             <p>
-              Andrea&apos;s workbook tabs: PRODUCCION, VENTA, GASTOS, GALPON,
-              and GALLINAS. Simple CSV files can still use Date or Fecha, Coop
-              1, Coop 2, Cracked, Total Eggs, and Notes.
+              Use Date or Fecha, Eggs or Total Eggs, Cracked, C, B, A, AA,
+              AAA, Jumbo, and Notes. Andrea tabs can stay named PRODUCCION,
+              VENTA, GASTOS, GALPON, and GALLINAS.
             </p>
           </div>
         </div>
@@ -1959,12 +2107,18 @@ function EggsSection({
             ) : null}
             {importSummary.preview.length ? (
               <AdminTable
-                headers={["Preview Date", "Coop 1", "Coop 2", "Cracked", "Notes"]}
+                headers={[
+                  "Preview Date",
+                  "Eggs",
+                  "Cracked",
+                  "Sizes",
+                  "Notes",
+                ]}
                 rows={importSummary.preview.map((entry) => [
                   entry.date,
                   entry.coop1Eggs,
-                  entry.coop2Eggs,
                   entry.crackedEggs,
+                  formatEggSizeBreakdown(entry.sizeBreakdown) || "-",
                   entry.notes || "-",
                 ])}
               />
@@ -1986,9 +2140,14 @@ function EggsSection({
                 "egg-logs.csv",
                 state.eggLogs.map((log) => ({
                   date: log.date,
-                  coop1Eggs: log.coop1Eggs,
-                  coop2Eggs: log.coop2Eggs,
+                  eggsCollected: log.coop1Eggs + log.coop2Eggs,
                   crackedEggs: log.crackedEggs,
+                  sizeC: log.sizeBreakdown?.C || 0,
+                  sizeB: log.sizeBreakdown?.B || 0,
+                  sizeA: log.sizeBreakdown?.A || 0,
+                  sizeAA: log.sizeBreakdown?.AA || 0,
+                  sizeAAA: log.sizeBreakdown?.AAA || 0,
+                  sizeJumbo: log.sizeBreakdown?.Jumbo || 0,
                   notes: log.notes || "",
                 })),
               )
@@ -1999,17 +2158,26 @@ function EggsSection({
           </button>
         </div>
         <AdminTable
-          headers={["Date", "Coop 1", "Coop 2", "Cracked", "Good", "Notes", ""]}
+          headers={[
+            "Date",
+            "Eggs",
+            "Cracked",
+            "Good",
+            "Sizes / Notes",
+            "",
+          ]}
           rows={state.eggLogs
             .slice()
             .reverse()
             .map((log) => [
               log.date,
-              log.coop1Eggs,
-              log.coop2Eggs,
+              log.coop1Eggs + log.coop2Eggs,
               log.crackedEggs,
               log.coop1Eggs + log.coop2Eggs - log.crackedEggs,
-              log.notes || "-",
+              [
+                formatEggSizeBreakdown(log.sizeBreakdown),
+                log.notes || "",
+              ].filter(Boolean).join(" | ") || "-",
               <button
                 key={log.id}
                 className="admin-table-action"
@@ -2065,61 +2233,120 @@ function SalesSection({
 
   return (
     <div className="admin-grid">
-      <section className="admin-panel admin-span-4">
-        <div className="admin-panel-header">
-          <div>
-            <p className="admin-eyebrow">Revenue</p>
-            <h2>Record a sale</h2>
+      <div className="admin-span-4 admin-stack">
+        <section className="admin-panel">
+          <div className="admin-panel-header">
+            <div>
+              <p className="admin-eyebrow">Revenue</p>
+              <h2>Record a sale</h2>
+            </div>
+            <ShoppingCart size={20} />
           </div>
-          <ShoppingCart size={20} />
-        </div>
-        <form className="admin-form" onSubmit={submit}>
-          <div className="admin-summary-strip">
-            <span>{metrics.cartonsAvailable} cartons ready</span>
-            <span>{formatCop(total)}</span>
+
+          <form className="admin-form" onSubmit={submit}>
+            <div className="admin-summary-strip">
+              <span>{metrics.cartonsAvailable} cartons ready</span>
+              <span>{formatCop(total)}</span>
+            </div>
+            <AdminField label="Sale date">
+              <input
+                type="date"
+                value={form.date}
+                onChange={(event) => setForm({ ...form, date: event.target.value })}
+              />
+            </AdminField>
+            <AdminField label="Cartons sold">
+              <input
+                inputMode="numeric"
+                value={form.cartons || ""}
+                onChange={(event) =>
+                  setForm({ ...form, cartons: parseNumber(event.target.value) })
+                }
+              />
+            </AdminField>
+            <AdminField label="Price per carton COP">
+              <input
+                inputMode="numeric"
+                value={form.pricePerCartonCop || ""}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    pricePerCartonCop: parseNumber(event.target.value),
+                  })
+                }
+              />
+            </AdminField>
+            <AdminField label="Customer">
+              <input
+                value={form.customerName}
+                onChange={(event) =>
+                  setForm({ ...form, customerName: event.target.value })
+                }
+              />
+            </AdminField>
+            <button className="admin-primary-button">
+              <Save size={17} />
+              Save Sale
+            </button>
+          </form>
+        </section>
+
+        <section className="admin-panel">
+          <div className="admin-panel-header">
+            <div>
+              <p className="admin-eyebrow">Sales chart</p>
+              <h2>Revenue by day</h2>
+            </div>
+            <BarChart3 size={20} />
           </div>
-          <AdminField label="Sale date">
-            <input
-              type="date"
-              value={form.date}
-              onChange={(event) => setForm({ ...form, date: event.target.value })}
-            />
-          </AdminField>
-          <AdminField label="Cartons sold">
-            <input
-              inputMode="numeric"
-              value={form.cartons || ""}
-              onChange={(event) =>
-                setForm({ ...form, cartons: parseNumber(event.target.value) })
-              }
-            />
-          </AdminField>
-          <AdminField label="Price per carton COP">
-            <input
-              inputMode="numeric"
-              value={form.pricePerCartonCop || ""}
-              onChange={(event) =>
-                setForm({
-                  ...form,
-                  pricePerCartonCop: parseNumber(event.target.value),
-                })
-              }
-            />
-          </AdminField>
-          <AdminField label="Customer">
-            <input
-              value={form.customerName}
-              onChange={(event) =>
-                setForm({ ...form, customerName: event.target.value })
-              }
-            />
-          </AdminField>
-          <button className="admin-primary-button">
-            <Save size={17} />
-            Save Sale
-          </button>
-        </form>
-      </section>
+          <div className="admin-chart compact">
+            {chartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <Tooltip formatter={formatAdminChartTooltipValue} />
+                  <Bar dataKey="revenueCop" fill="#4f7f64" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <AdminChartEmpty label="No sales recorded yet." />
+            )}
+          </div>
+        </section>
+
+        <section className="admin-panel">
+          <div className="admin-panel-header">
+            <div>
+              <p className="admin-eyebrow">Cartons chart</p>
+              <h2>Cartons sold by day</h2>
+            </div>
+            <ShoppingCart size={20} />
+          </div>
+          <div className="admin-chart compact">
+            {chartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <Tooltip formatter={formatAdminChartTooltipValue} />
+                  <Area
+                    type="monotone"
+                    dataKey="cartons"
+                    stroke="#c78643"
+                    fill="#d8aa56"
+                    fillOpacity={0.24}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <AdminChartEmpty label="No carton sales to chart yet." />
+            )}
+          </div>
+        </section>
+      </div>
 
       <section className="admin-panel admin-span-8">
         <div className="admin-panel-header">
@@ -2142,62 +2369,6 @@ function SalesSection({
               formatCop(sale.cartons * sale.pricePerCartonCop),
             ])}
         />
-      </section>
-
-      <section className="admin-panel admin-span-6">
-        <div className="admin-panel-header">
-          <div>
-            <p className="admin-eyebrow">Sales chart</p>
-            <h2>Revenue by day</h2>
-          </div>
-          <BarChart3 size={20} />
-        </div>
-        <div className="admin-chart compact">
-          {chartData.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
-                <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
-                <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
-                <Tooltip formatter={formatAdminChartTooltipValue} />
-                <Bar dataKey="revenueCop" fill="#4f7f64" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <AdminChartEmpty label="No sales recorded yet." />
-          )}
-        </div>
-      </section>
-
-      <section className="admin-panel admin-span-6">
-        <div className="admin-panel-header">
-          <div>
-            <p className="admin-eyebrow">Cartons chart</p>
-            <h2>Cartons sold by day</h2>
-          </div>
-          <ShoppingCart size={20} />
-        </div>
-        <div className="admin-chart compact">
-          {chartData.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
-                <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
-                <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
-                <Tooltip formatter={formatAdminChartTooltipValue} />
-                <Area
-                  type="monotone"
-                  dataKey="cartons"
-                  stroke="#c78643"
-                  fill="#d8aa56"
-                  fillOpacity={0.24}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <AdminChartEmpty label="No carton sales to chart yet." />
-          )}
-        </div>
       </section>
     </div>
   );
@@ -2989,6 +3160,69 @@ function ReportsSection({
   rows: ReturnType<typeof getReportRows>;
   updateState: (state: FarmState, message: string) => void;
 }) {
+  const [graphType, setGraphType] = useState<ReportGraphType>("production");
+  const [graphStyle, setGraphStyle] = useState<ReportGraphStyle>("bar");
+  const graphOptions: {
+    id: ReportGraphType;
+    title: string;
+    detail: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+  }[] = [
+    {
+      id: "production",
+      title: "Production",
+      detail: "Good eggs and cartons sold",
+      icon: BarChart3,
+    },
+    {
+      id: "finance",
+      title: "Finance",
+      detail: "Sales compared with expenses",
+      icon: Wallet,
+    },
+    {
+      id: "feed",
+      title: "Feed",
+      detail: "Egg output against costs",
+      icon: Sprout,
+    },
+  ];
+  const graphStyleOptions: {
+    id: ReportGraphStyle;
+    label: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+  }[] = [
+    { id: "bar", label: "Bar", icon: BarChart3 },
+    { id: "line", label: "Line", icon: LineChartIcon },
+    { id: "area", label: "Area", icon: Activity },
+    { id: "pie", label: "Pie", icon: PieChartIcon },
+  ];
+  const reportGraphSeries: Record<
+    ReportGraphType,
+    { key: keyof (typeof rows)[number]; color: string }[]
+  > = {
+    production: [
+      { key: "goodEggs", color: "#4f7f64" },
+      { key: "cartonsSold", color: "#c78643" },
+    ],
+    finance: [
+      { key: "salesCop", color: "#4f7f64" },
+      { key: "expensesCop", color: "#c36c5a" },
+    ],
+    feed: [
+      { key: "goodEggs", color: "#4f7f64" },
+      { key: "expensesCop", color: "#d8aa56" },
+    ],
+  };
+  const selectedGraph = graphOptions.find((option) => option.id === graphType);
+  const selectedSeries = reportGraphSeries[graphType];
+  const pieData = selectedSeries.map((series) => ({
+    metric: series.key,
+    name: adminChartMetricLabels[String(series.key)] ?? String(series.key),
+    value: rows.reduce((sum, row) => sum + Number(row[series.key] || 0), 0),
+    color: series.color,
+  }));
+
   return (
     <div className="admin-grid">
       <section className="admin-panel admin-span-12">
@@ -3004,15 +3238,6 @@ function ReportsSection({
             >
               <Download size={16} />
               Export CSV
-            </button>
-            <button
-              className="admin-secondary-button"
-              onClick={() =>
-                updateState(createDemoFarmState(), "Demo data loaded.")
-              }
-            >
-              <Plus size={16} />
-              Demo Data
             </button>
             <button
               className="admin-danger-button"
@@ -3057,18 +3282,129 @@ function ReportsSection({
           />
         </div>
 
-        <div className="admin-chart compact">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={rows}>
-              <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
-              <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
-              <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
-              <Tooltip />
-              <Bar dataKey="goodEggs" fill="#4f7f64" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="cartonsSold" fill="#c78643" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="admin-graph-options">
+          {graphOptions.map((option) => {
+            const Icon = option.icon;
+            const selected = graphType === option.id;
+
+            return (
+              <button
+                key={option.id}
+                className={selected ? "is-active" : ""}
+                onClick={() => setGraphType(option.id)}
+                type="button"
+              >
+                <Icon size={20} />
+                <span>
+                  <strong>{option.title}</strong>
+                  {option.detail}
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        <div className="admin-chart-style-options" aria-label="Graph style">
+          {graphStyleOptions.map((option) => {
+            const Icon = option.icon;
+            const selected = graphStyle === option.id;
+
+            return (
+              <button
+                key={option.id}
+                className={selected ? "is-active" : ""}
+                onClick={() => setGraphStyle(option.id)}
+                type="button"
+                aria-pressed={selected}
+                aria-label={`${option.label} graph`}
+                title={`${option.label} graph`}
+              >
+                <Icon size={17} />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="admin-chart compact">
+          {rows.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              {graphStyle === "bar" ? (
+                <BarChart data={rows}>
+                  <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <Tooltip formatter={formatAdminChartTooltipValue} />
+                  {selectedSeries.map((series) => (
+                    <Bar
+                      key={String(series.key)}
+                      dataKey={series.key}
+                      fill={series.color}
+                      radius={[4, 4, 0, 0]}
+                    />
+                  ))}
+                </BarChart>
+              ) : graphStyle === "line" ? (
+                <RechartsLineChart data={rows}>
+                  <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <Tooltip formatter={formatAdminChartTooltipValue} />
+                  {selectedSeries.map((series) => (
+                    <Line
+                      key={String(series.key)}
+                      type="monotone"
+                      dataKey={series.key}
+                      stroke={series.color}
+                      strokeWidth={3}
+                      dot={false}
+                    />
+                  ))}
+                </RechartsLineChart>
+              ) : graphStyle === "area" ? (
+                <AreaChart data={rows}>
+                  <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <Tooltip formatter={formatAdminChartTooltipValue} />
+                  {selectedSeries.map((series) => (
+                    <Area
+                      key={String(series.key)}
+                      type="monotone"
+                      dataKey={series.key}
+                      stroke={series.color}
+                      fill={series.color}
+                      fillOpacity={0.18}
+                    />
+                  ))}
+                </AreaChart>
+              ) : (
+                <RechartsPieChart>
+                  <Tooltip formatter={formatAdminPieTooltipValue} />
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={56}
+                    outerRadius={96}
+                    paddingAngle={3}
+                    label
+                  >
+                    {pieData.map((item) => (
+                      <Cell key={String(item.metric)} fill={item.color} />
+                    ))}
+                  </Pie>
+                </RechartsPieChart>
+              )}
+            </ResponsiveContainer>
+          ) : (
+            <AdminChartEmpty label="No report rows to chart yet." />
+          )}
+        </div>
+
+        <p className="admin-chart-caption">
+          Showing {selectedGraph?.title.toLowerCase()} as a {graphStyle} graph:{" "}
+          {selectedGraph?.detail.toLowerCase()}.
+        </p>
       </section>
 
       <section className="admin-panel admin-span-12">
@@ -3082,10 +3418,11 @@ function ReportsSection({
         <AdminTable
           headers={[
             "Date",
-            "Coop 1",
-            "Coop 2",
+            "Eggs Collected",
             "Cracked",
             "Good Eggs",
+            "Size Total",
+            "Sizes",
             "Cartons Sold",
             "Sales",
             "Expenses",
@@ -3095,10 +3432,11 @@ function ReportsSection({
             .reverse()
             .map((row) => [
               row.date,
-              row.coop1Eggs,
-              row.coop2Eggs,
+              row.eggsCollected,
               row.crackedEggs,
               row.goodEggs,
+              row.sizeTotal,
+              row.sizeSummary,
               row.cartonsSold,
               formatCop(row.salesCop),
               formatCop(row.expensesCop),
@@ -3134,6 +3472,45 @@ function MetricTile({
   );
 }
 
+function AdminThemeToggle({
+  themeMode,
+  setThemeMode,
+}: {
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
+}) {
+  const options: {
+    id: ThemeMode;
+    label: string;
+    icon: React.ComponentType<{ size?: number }>;
+  }[] = [
+    { id: "daylight", label: "Day", icon: Sun },
+    { id: "nighttime", label: "Night", icon: Moon },
+  ];
+
+  return (
+    <div className="admin-theme-toggle" aria-label="Theme mode">
+      {options.map((option) => {
+        const Icon = option.icon;
+        const selected = themeMode === option.id;
+
+        return (
+          <button
+            key={option.id}
+            className={selected ? "is-active" : ""}
+            onClick={() => setThemeMode(option.id)}
+            type="button"
+            aria-pressed={selected}
+          >
+            <Icon size={16} />
+            <span>{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function StatusPill({
   icon: Icon,
   label,
@@ -3162,6 +3539,34 @@ function AdminField({
     <label className="admin-field">
       <span>{label}</span>
       {children}
+    </label>
+  );
+}
+
+function EggSizeEntry({
+  category,
+  value,
+  onChange,
+}: {
+  category: EggSizeCategory;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="egg-size-card">
+      <span className="egg-size-visual">
+        <span
+          className={`egg-size-egg size-${category.toLowerCase()}`}
+          aria-hidden="true"
+        />
+        <span className="egg-size-label">{category}</span>
+      </span>
+      <span className="egg-size-field-label">eggs</span>
+      <input
+        inputMode="numeric"
+        value={value || ""}
+        onChange={(event) => onChange(parseNumber(event.target.value))}
+      />
     </label>
   );
 }

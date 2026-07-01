@@ -1,4 +1,5 @@
 import mysql, { type Pool } from "mysql2/promise";
+import { migrateFarmState } from "./farm-state-migration";
 import type { FarmState } from "./types";
 
 let pool: Pool | null = null;
@@ -30,7 +31,7 @@ function getPool() {
   const port = Number(process.env.MYSQL_PORT || process.env.DB_PORT || 3306);
 
   if (!host || !user || !database) {
-    throw new Error("Dailey database credentials are not available yet.");
+    throw new Error("Farm data connection is not ready yet.");
   }
 
   pool = mysql.createPool({
@@ -73,10 +74,10 @@ export async function readFarmStateFromDatabase() {
   const data = firstRow.data;
 
   if (typeof data === "string") {
-    return JSON.parse(data) as FarmState;
+    return migrateFarmState(JSON.parse(data) as FarmState);
   }
 
-  return data as FarmState;
+  return migrateFarmState(data as FarmState);
 }
 
 export async function writeFarmStateToDatabase(state: FarmState) {
@@ -90,6 +91,6 @@ export async function writeFarmStateToDatabase(state: FarmState) {
         data = values(data),
         updated_at = current_timestamp
     `,
-    ["primary", JSON.stringify(state)],
+    ["primary", JSON.stringify(migrateFarmState(state))],
   );
 }

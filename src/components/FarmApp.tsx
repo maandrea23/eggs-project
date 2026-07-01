@@ -3,7 +3,6 @@
 import { format } from "date-fns";
 import {
   AlertTriangle,
-  ArrowLeftRight,
   BarChart3,
   Bird,
   Boxes,
@@ -15,7 +14,6 @@ import {
   Ellipsis,
   HeartPulse,
   Home,
-  Leaf,
   LogOut,
   Moon,
   Package,
@@ -53,7 +51,13 @@ import {
   getReportRows,
   getSalesChartData,
 } from "@/lib/calculations";
-import { createFreshFarmState } from "@/lib/demo-data";
+import {
+  EGG_SIZE_ORDER,
+  formatEggSizeBreakdown,
+  getEggSizeTotal,
+  normalizeEggSizeBreakdown,
+} from "@/lib/egg-classification";
+import { createFreshFarmState } from "@/lib/farm-state-defaults";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
 import InvestmentSection from "@/components/InvestmentSection";
 import type {
@@ -62,6 +66,7 @@ import type {
   FarmState,
   HealthRecord,
   OfflineQueueItem,
+  EggSizeCategory,
 } from "@/lib/types";
 
 type TabKey =
@@ -95,7 +100,7 @@ function parseNumericInputValue(value: string) {
   return digitsOnly ? Number.parseInt(digitsOnly, 10) : 0;
 }
 
-async function saveFarmStateToDailey(state: FarmState) {
+async function saveFarmRecord(state: FarmState) {
   const response = await fetch("/api/farm-state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -106,7 +111,7 @@ async function saveFarmStateToDailey(state: FarmState) {
     const body = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(body?.error || "Dailey database save failed.");
+    throw new Error(body?.error || "Farm data save failed.");
   }
 }
 
@@ -165,8 +170,6 @@ export default function FarmApp() {
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [moreSection, setMoreSection] = useState<MoreSectionKey>("inventory");
   const [userMode, setUserMode] = useState<UserMode | null>(null);
-  const [authEmail, setAuthEmail] = useState("owner@brianna-eggs.test");
-  const [authPassword, setAuthPassword] = useState("demo-password");
   const [authMessage, setAuthMessage] = useState("");
   const [online, setOnline] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -193,7 +196,7 @@ export default function FarmApp() {
       fetch("/api/farm-state")
         .then(async (response) => {
           if (!response.ok) {
-            throw new Error("Dailey database is not ready yet.");
+            throw new Error("Farm data is not ready yet.");
           }
 
           return (await response.json()) as { state: FarmState | null };
@@ -203,7 +206,7 @@ export default function FarmApp() {
             setState(databaseState);
             saveFarmState(databaseState);
           } else {
-            void saveFarmStateToDailey(localState);
+            void saveFarmRecord(localState);
           }
 
           setDatabaseStatus("ready");
@@ -233,9 +236,13 @@ export default function FarmApp() {
   }, [loaded, state]);
 
   useEffect(() => {
+    if (!loaded) {
+      return;
+    }
+
     document.documentElement.dataset.theme = themeMode;
     window.localStorage.setItem(THEME_KEY, themeMode);
-  }, [themeMode]);
+  }, [loaded, themeMode]);
 
   const operatorTabs: TabKey[] = ["dashboard", "eggs", "expenses"];
   const allowedTabs = userMode === "operator" ? operatorTabs : tabs.map((t) => t.id);
@@ -257,7 +264,7 @@ export default function FarmApp() {
       return;
     }
 
-    void saveFarmStateToDailey(next)
+    void saveFarmRecord(next)
       .then(() => {
         setDatabaseStatus("ready");
       })
@@ -265,8 +272,8 @@ export default function FarmApp() {
         setDatabaseStatus("local");
         setAuthMessage(
           error instanceof Error
-            ? `Dailey sync paused: ${error.message}`
-            : "Dailey sync paused. Local offline storage is still active.",
+            ? `Farm data save paused: ${error.message}`
+            : "Farm data save paused. Changes are still saved on this device.",
         );
       });
   }
@@ -286,19 +293,13 @@ export default function FarmApp() {
 
   function handleOwnerLogin() {
     setUserMode("owner");
-    setAuthMessage(
-      databaseStatus === "ready"
-        ? "Owner mode active. Full access to all farm data."
-        : "Owner mode active. Data saves on this device until Dailey is connected.",
-    );
+    setAuthMessage("");
   }
 
   function handleOperatorLogin() {
     setUserMode("operator");
     setActiveTab("eggs");
-    setAuthMessage(
-      "Operator mode active. You can only log daily production (eggs, feed, vaccines).",
-    );
+    setAuthMessage("");
   }
 
   async function syncOfflineQueue() {
@@ -309,12 +310,12 @@ export default function FarmApp() {
     setSyncing(true);
 
     try {
-      await saveFarmStateToDailey(state);
+      await saveFarmRecord(state);
     } catch (error) {
       setAuthMessage(
         error instanceof Error
-          ? `Dailey sync failed: ${error.message}`
-          : "Dailey sync failed. Local offline storage is still active.",
+          ? `Farm data save failed: ${error.message}`
+          : "Farm data save failed. Changes are still saved on this device.",
       );
       setDatabaseStatus("local");
       setSyncing(false);
@@ -327,15 +328,15 @@ export default function FarmApp() {
         item.syncedAt ? item : { ...item, syncedAt: nowIso() },
       ),
     });
-    setAuthMessage("Offline entries synced to the Dailey database.");
+    setAuthMessage("Waiting entries saved to the farm records.");
     setDatabaseStatus("ready");
     setSyncing(false);
   }
 
-  function handleResetDemoData() {
+  function handleResetFarmWorkspace() {
     updateState(resetFarmState());
     setActiveTab("dashboard");
-    setAuthMessage("Fresh real-data workspace ready. Old demo entries are cleared.");
+    setAuthMessage("Farm workspace reset.");
   }
 
   if (!loaded) {
@@ -381,43 +382,7 @@ export default function FarmApp() {
           </div>
 
           <div className="floating-card p-5">
-            <div className="tone-card tone-moss mb-5 rounded-[1.6rem] p-5 text-[var(--foreground)]">
-              <Leaf className="mb-4 text-[var(--forest)]" size={28} />
-              <h2 className="text-2xl font-black">Healthy animals. Healthy food.</h2>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                A calm daily workspace for eggs, feed, sales, and the rhythm of
-                the farm.
-              </p>
-            </div>
-            <h2 className="text-xl font-black">Welcome back</h2>
-            <p className="mt-1 text-sm leading-6 text-[var(--muted)]">
-              Use owner mode for now. Dailey database sync runs in the
-              deployed app, while this device keeps an offline copy.
-            </p>
-
-            <label className="mt-5 block text-sm font-black">Email</label>
-            <input
-              className="input mt-2"
-              value={authEmail}
-              onChange={(event) => setAuthEmail(event.target.value)}
-              type="email"
-            />
-
-            <label className="mt-4 block text-sm font-black">Password</label>
-            <input
-              className="input mt-2"
-              value={authPassword}
-              onChange={(event) => setAuthPassword(event.target.value)}
-              type="password"
-            />
-
-            {authMessage ? (
-              <p className="soft-panel mt-4 p-3 text-sm font-bold text-[var(--clay)]">
-                {authMessage}
-              </p>
-            ) : null}
-
-            <div className="mt-5 grid gap-3">
+            <div className="grid gap-3">
               <button
                 className="primary-button flex h-14 items-center justify-center gap-2 px-4 text-base"
                 onClick={handleOwnerLogin}
@@ -432,19 +397,6 @@ export default function FarmApp() {
                 <ClipboardList size={20} />
                 Operator Mode — Daily production only
               </button>
-            </div>
-
-            <div className="soft-panel mt-5 flex items-center gap-2 p-3 text-sm font-bold text-[var(--olive)]">
-              {databaseStatus === "ready" ? (
-                <Cloud size={18} />
-              ) : (
-                <CloudOff size={18} />
-              )}
-              {databaseStatus === "checking"
-                ? "Checking Dailey database..."
-                : databaseStatus === "ready"
-                  ? "Dailey database connected."
-                  : "Local offline storage active."}
             </div>
           </div>
         </section>
@@ -476,7 +428,7 @@ export default function FarmApp() {
               <button
                 className="secondary-button grid h-12 w-12 place-items-center"
                 onClick={() => void syncOfflineQueue()}
-                title="Sync offline queue"
+                title="Save waiting entries"
               >
                 <RefreshCw
                   className={syncing ? "animate-spin" : ""}
@@ -581,7 +533,7 @@ export default function FarmApp() {
                 moreSection={moreSection}
                 setMoreSection={setMoreSection}
                 updateState={updateState}
-                onReset={handleResetDemoData}
+                onReset={handleResetFarmWorkspace}
               />
             ) : null
           ) : null}
@@ -635,15 +587,15 @@ function SyncBanner({
       </div>
       <div className="flex items-center gap-2">
         <ClipboardList size={18} />
-        {queueCount} unsynced item{queueCount === 1 ? "" : "s"}
+        {queueCount} entr{queueCount === 1 ? "y" : "ies"} waiting to save
       </div>
       <div className="flex items-center gap-2">
         <Settings size={18} />
         {databaseStatus === "ready"
-          ? "Dailey database ready"
+          ? "Farm records ready"
           : databaseStatus === "checking"
-            ? "Checking Dailey database"
-            : "Local offline storage"}
+            ? "Checking farm records"
+            : "Changes saved on this device"}
       </div>
       {message ? (
         <p className="soft-panel p-3 text-[var(--clay)] md:col-span-3">
@@ -751,7 +703,7 @@ function DashboardSection({
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Card title="Egg production by coop" icon={BarChart3}>
+        <Card title="Egg production" icon={BarChart3}>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
@@ -761,24 +713,17 @@ function DashboardSection({
                 <Tooltip />
                 <Area
                   type="monotone"
-                  dataKey="Coop 1"
+                  dataKey="Eggs"
                   stroke="var(--base-moss)"
                   fill="var(--base-moss)"
                   fillOpacity={0.28}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Coop 2"
-                  stroke="var(--base-clay)"
-                  fill="var(--base-harvest)"
-                  fillOpacity={0.22}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
-        <Card title="Birds per coop" icon={Bird}>
+        <Card title="Birds in coop" icon={Bird}>
           <div className="grid gap-3">
             {state.coops.map((coop) => (
               <div key={coop.id} className="soft-panel flex items-center gap-4 p-4">
@@ -860,13 +805,25 @@ function EggLoggingSection({
     coop1Eggs: 0,
     coop2Eggs: 0,
     crackedEggs: 0,
+    sizeBreakdown: normalizeEggSizeBreakdown(),
     notes: "",
   });
 
-  const totalEggs = form.coop1Eggs + form.coop2Eggs;
+  const totalEggs = form.coop1Eggs;
   const goodEggs = Math.max(totalEggs - form.crackedEggs, 0);
   const cartons = Math.floor(goodEggs / 30);
   const loose = goodEggs % 30;
+  const categorizedEggs = getEggSizeTotal(form.sizeBreakdown);
+
+  function updateSizeBreakdown(category: EggSizeCategory, value: number) {
+    setForm({
+      ...form,
+      sizeBreakdown: normalizeEggSizeBreakdown({
+        ...form.sizeBreakdown,
+        [category]: value,
+      }),
+    });
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -894,6 +851,7 @@ function EggLoggingSection({
       coop1Eggs: 0,
       coop2Eggs: 0,
       crackedEggs: 0,
+      sizeBreakdown: normalizeEggSizeBreakdown(),
       notes: "",
     });
   }
@@ -912,25 +870,27 @@ function EggLoggingSection({
               }
             />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <LargeNumberField
-              label="Coop One"
-              hint="Collected eggs"
-              value={form.coop1Eggs}
-              onChange={(value) => setForm({ ...form, coop1Eggs: value })}
-            />
-            <LargeNumberField
-              label="Coop Two"
-              hint="Collected eggs"
-              value={form.coop2Eggs}
-              onChange={(value) => setForm({ ...form, coop2Eggs: value })}
-            />
-          </div>
+          <LargeNumberField
+            label="Eggs collected"
+            hint="One coop"
+            value={form.coop1Eggs}
+            onChange={(value) => setForm({ ...form, coop1Eggs: value })}
+          />
           <NumberField
             label="Cracked or damaged"
             value={form.crackedEggs}
             onChange={(value) => setForm({ ...form, crackedEggs: value })}
           />
+          <div className="egg-size-grid">
+            {EGG_SIZE_ORDER.map((category) => (
+              <EggSizeEntry
+                key={category}
+                category={category}
+                value={form.sizeBreakdown[category]}
+                onChange={(value) => updateSizeBreakdown(category, value)}
+              />
+            ))}
+          </div>
           <Field label="Notes">
             <textarea
               className="input min-h-24 py-3"
@@ -941,10 +901,11 @@ function EggLoggingSection({
               placeholder="Optional note"
             />
           </Field>
-          <div className="soft-panel grid grid-cols-3 gap-2 p-3 text-center">
+          <div className="soft-panel grid grid-cols-2 gap-2 p-3 text-center sm:grid-cols-4">
             <MiniTotal label="Total" value={totalEggs} />
             <MiniTotal label="Cartons" value={cartons} />
             <MiniTotal label="Loose" value={loose} />
+            <MiniTotal label="Sized" value={categorizedEggs} />
           </div>
           <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
             <Save size={20} />
@@ -967,9 +928,13 @@ function EggLoggingSection({
                   </p>
                 </div>
                 <p className="mt-2 text-sm text-[var(--muted)]">
-                  Coop 1: {log.coop1Eggs} • Coop 2: {log.coop2Eggs} • Cracked:{" "}
-                  {log.crackedEggs}
+                  Eggs: {log.coop1Eggs + log.coop2Eggs} • Cracked: {log.crackedEggs}
                 </p>
+                {formatEggSizeBreakdown(log.sizeBreakdown) ? (
+                  <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
+                    {formatEggSizeBreakdown(log.sizeBreakdown)}
+                  </p>
+                ) : null}
               </div>
             ))}
         </div>
@@ -1178,11 +1143,6 @@ function CoopSection({
   state: FarmState;
   updateState: (state: FarmState) => void;
 }) {
-  const [move, setMove] = useState({
-    from: "coop-1",
-    to: "coop-2",
-    quantity: 0,
-  });
   const [birdAction, setBirdAction] = useState({
     coopId: "coop-1",
     type: "new_birds" as "new_birds" | "death" | "removal",
@@ -1197,44 +1157,6 @@ function CoopSection({
         coop.id === coopId ? { ...coop, ...patch } : coop,
       ),
     });
-  }
-
-  function moveBirds(event: FormEvent) {
-    event.preventDefault();
-    if (move.from === move.to || move.quantity <= 0) return;
-
-    updateState({
-      ...state,
-      coops: state.coops.map((coop) => {
-        if (coop.id === move.from) {
-          return { ...coop, hens: Math.max(coop.hens - move.quantity, 0) };
-        }
-        if (coop.id === move.to) {
-          return { ...coop, hens: coop.hens + move.quantity };
-        }
-        return coop;
-      }),
-      birdMovements: [
-        ...state.birdMovements,
-        {
-          id: makeId("move"),
-          date: todayIso(),
-          coopId: move.from,
-          type: "transfer_out",
-          quantity: move.quantity,
-          notes: `Moved to ${state.coops.find((coop) => coop.id === move.to)?.name}`,
-        },
-        {
-          id: makeId("move"),
-          date: todayIso(),
-          coopId: move.to,
-          type: "transfer_in",
-          quantity: move.quantity,
-          notes: `Moved from ${state.coops.find((coop) => coop.id === move.from)?.name}`,
-        },
-      ],
-    });
-    setMove({ ...move, quantity: 0 });
   }
 
   function recordBirdAction(event: FormEvent) {
@@ -1307,33 +1229,6 @@ function CoopSection({
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Move birds" icon={ArrowLeftRight}>
-          <form className="grid gap-4" onSubmit={moveBirds}>
-            <div className="grid grid-cols-2 gap-3">
-              <CoopSelect
-                label="From"
-                coops={state.coops}
-                value={move.from}
-                onChange={(from) => setMove({ ...move, from })}
-              />
-              <CoopSelect
-                label="To"
-                coops={state.coops}
-                value={move.to}
-                onChange={(to) => setMove({ ...move, to })}
-              />
-            </div>
-            <NumberField
-              label="Number of birds"
-              value={move.quantity}
-              onChange={(quantity) => setMove({ ...move, quantity })}
-            />
-            <button className="primary-button h-13">
-              Move birds
-            </button>
-          </form>
-        </Card>
-
         <Card title="Deaths, removals, new birds" icon={ClipboardList}>
           <form className="grid gap-4" onSubmit={recordBirdAction}>
             <CoopSelect
@@ -1951,10 +1846,17 @@ function ReportsSection({
   function exportCsv() {
     const header = [
       "date",
-      "coop1Eggs",
-      "coop2Eggs",
+      "eggsCollected",
       "crackedEggs",
       "goodEggs",
+      "sizeC",
+      "sizeB",
+      "sizeA",
+      "sizeAA",
+      "sizeAAA",
+      "sizeJumbo",
+      "sizeTotal",
+      "sizeSummary",
       "cartonsSold",
       "salesCop",
       "expensesCop",
@@ -2068,9 +1970,9 @@ function ReportsSection({
             <thead>
               <tr className="border-b border-[var(--line)] text-[var(--muted)]">
                 <th className="py-3">Date</th>
-                <th>Coop 1</th>
-                <th>Coop 2</th>
+                <th>Eggs collected</th>
                 <th>Good eggs</th>
+                <th>Sizes</th>
                 <th>Sold</th>
                 <th>Sales</th>
                 <th>Expenses</th>
@@ -2084,8 +1986,8 @@ function ReportsSection({
                   <tr key={row.date} className="border-b border-[var(--line)]">
                     <td className="py-3 font-bold">{row.date}</td>
                     <td>{row.coop1Eggs}</td>
-                    <td>{row.coop2Eggs}</td>
                     <td>{row.goodEggs}</td>
+                    <td>{row.sizeSummary}</td>
                     <td>{row.cartonsSold}</td>
                     <td>{formatCop(row.salesCop)}</td>
                     <td>{formatCop(row.expensesCop)}</td>
@@ -2106,7 +2008,7 @@ function ReportsSection({
             "Monthly expense report",
             "Monthly profit/loss report",
             "Feed usage report",
-            "Coop performance comparison",
+            "Production trend report",
           ].map((label) => (
             <p key={label} className="soft-panel p-3">
               {label}
@@ -2529,6 +2431,38 @@ function NumberField({
         onFocus={(event) => event.currentTarget.select()}
       />
     </Field>
+  );
+}
+
+function EggSizeEntry({
+  category,
+  value,
+  onChange,
+}: {
+  category: EggSizeCategory;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="egg-size-card">
+      <span className="egg-size-visual">
+        <span
+          className={`egg-size-egg size-${category.toLowerCase()}`}
+          aria-hidden="true"
+        />
+        <span className="egg-size-label">{category}</span>
+      </span>
+      <span className="egg-size-field-label">eggs</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        value={formatNumericInputValue(value)}
+        onChange={(event) => onChange(parseNumericInputValue(event.target.value))}
+        onFocus={(event) => event.currentTarget.select()}
+      />
+    </label>
   );
 }
 

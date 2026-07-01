@@ -22,9 +22,24 @@ export type EggLog = {
   coop1Eggs: number;
   coop2Eggs: number;
   crackedEggs: number;
+  sizeBreakdown?: EggSizeBreakdown;
   notes?: string;
   synced: boolean;
   createdAt: string;
+};
+
+export type EggSizeCategory = "C" | "B" | "A" | "AA" | "AAA" | "Jumbo";
+
+export type EggTrayType = "B" | "A" | "AA" | "AAA";
+
+export type EggSizeBreakdown = Record<EggSizeCategory, number>;
+
+export type EggWeightClassification = {
+  category: EggSizeCategory;
+  label: string;
+  minGrams?: number;
+  maxGrams?: number;
+  trayType: EggTrayType;
 };
 
 export type Sale = {

@@ -569,6 +569,83 @@ textarea.input {
   margin-top: 14px;
 }
 
+.admin-graph-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.admin-graph-options button {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 82px;
+  border: 1px solid #dfe5dc;
+  border-radius: 8px;
+  background: #fbfcf9;
+  padding: 12px;
+  color: #304036;
+  text-align: left;
+}
+
+.admin-graph-options button.is-active {
+  border-color: #4f7f64;
+  background: #e9f2e8;
+  box-shadow: 0 0 0 3px rgb(79 127 100 / 12%);
+}
+
+.admin-graph-options span,
+.admin-graph-options strong {
+  display: block;
+}
+
+.admin-graph-options strong {
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.admin-graph-options span {
+  color: #687469;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.admin-chart-style-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.admin-chart-style-options button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  min-height: 36px;
+  border: 1px solid #dfe5dc;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0;
+  color: #536158;
+}
+
+.admin-chart-style-options button.is-active {
+  border-color: #4f7f64;
+  background: #315f42;
+  color: #ffffff;
+}
+
+.admin-chart-caption {
+  margin: 10px 0 0;
+  color: #687469;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .admin-stack,
 .admin-inventory-list,
 .admin-coop-grid {
@@ -679,6 +756,109 @@ textarea.input {
   box-shadow: 0 0 0 3px rgb(79 127 100 / 15%);
 }
 
+.egg-size-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.egg-size-card {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  border: 1px solid #d9e1d7;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf4 100%);
+  padding: 8px;
+}
+
+.egg-size-visual {
+  display: flex;
+  min-height: 50px;
+  align-items: end;
+  justify-content: center;
+  gap: 6px;
+}
+
+.egg-size-egg {
+  display: block;
+  width: 29px;
+  height: 38px;
+  border: 1px solid rgb(165 128 73 / 20%);
+  border-radius: 52% 52% 47% 47%;
+  background:
+    radial-gradient(circle at 36% 28%, rgb(255 255 255 / 70%) 0 16%, transparent 17%),
+    linear-gradient(145deg, #fff8df 0%, #f0c979 58%, #d4a357 100%);
+  box-shadow: inset -5px -7px 10px rgb(131 89 35 / 17%), 0 8px 16px rgb(54 72 58 / 12%);
+  transform-origin: center bottom;
+}
+
+.egg-size-egg.size-c {
+  transform: scale(0.72);
+}
+
+.egg-size-egg.size-b {
+  transform: scale(0.84);
+}
+
+.egg-size-egg.size-a {
+  transform: scale(0.96);
+}
+
+.egg-size-egg.size-aa {
+  transform: scale(1.08);
+}
+
+.egg-size-egg.size-aaa {
+  transform: scale(1.2);
+}
+
+.egg-size-egg.size-jumbo {
+  transform: scale(1.32);
+}
+
+.egg-size-label {
+  color: #2e6b49;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.egg-size-field-label {
+  color: #657267;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.egg-size-card input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #d9e1d7;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+  color: #1d2a22;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 900;
+  text-align: center;
+  outline: none;
+}
+
+.egg-size-card input:focus {
+  border-color: #4f7f64;
+  box-shadow: 0 0 0 3px rgb(79 127 100 / 15%);
+}
+
+@media (min-width: 720px) {
+  .egg-size-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .admin-summary-strip {
   display: flex;
   flex-wrap: wrap;
@@ -737,18 +917,24 @@ textarea.input {
 }
 
 .admin-import-help {
-  border: 1px solid #edf1ec;
+  align-self: start;
+  border-left: 4px solid #9db4a1;
   border-radius: 8px;
-  background: #fbfcf9;
-  padding: 14px;
+  background: #f7faf5;
+  padding: 9px 10px;
 }
 
 .admin-import-help strong {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   color: #253229;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 950;
+}
+
+.admin-import-help p {
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .admin-import-summary {
@@ -864,6 +1050,7 @@ textarea.input {
 @media (max-width: 1180px) {
   .admin-metrics,
   .admin-report-grid,
+  .admin-graph-options,
   .admin-insights {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -935,5 +1122,298 @@ textarea.input {
 
   .admin-panel {
     padding: 13px;
+  }
+}
+
+/* Desktop admin theme aligned with the mobile farm app palette. */
+.admin-shell {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--base-harvest), transparent 78%), transparent 30rem),
+    radial-gradient(circle at 82% 10%, color-mix(in srgb, var(--base-moss), transparent 74%), transparent 28rem),
+    radial-gradient(circle at 8% 78%, color-mix(in srgb, var(--base-plum), transparent 84%), transparent 22rem),
+    radial-gradient(circle at 92% 82%, color-mix(in srgb, var(--base-clay), transparent 82%), transparent 24rem),
+    linear-gradient(180deg, var(--background), color-mix(in srgb, var(--background), white 30%));
+  color: var(--foreground);
+}
+
+.admin-sidebar {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
+}
+
+.admin-brand p,
+.admin-eyebrow {
+  color: var(--clay);
+}
+
+.admin-brand strong,
+.admin-header h1,
+.admin-panel-header h2,
+.admin-metric strong,
+.admin-insights strong,
+.admin-import-help strong,
+.admin-table td {
+  color: var(--foreground);
+}
+
+.admin-header p,
+.admin-metric span,
+.admin-insights span,
+.admin-progress-row span,
+.admin-metric p,
+.admin-insights p,
+.admin-alert p,
+.admin-chart-caption,
+.admin-field span,
+.admin-upload-box span,
+.admin-import-help p,
+.admin-import-summary p,
+.admin-table th,
+.admin-empty,
+.admin-chart-empty {
+  color: var(--muted);
+}
+
+.admin-nav button {
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.admin-nav button:hover,
+.admin-nav button.is-active {
+  background: color-mix(in srgb, var(--cream) 78%, var(--card));
+  color: var(--forest);
+  box-shadow: var(--shadow-soft);
+}
+
+.admin-theme-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card), transparent 18%);
+  padding: 0.25rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.admin-theme-toggle button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.admin-theme-toggle button.is-active {
+  background: var(--base-harvest);
+  color: var(--foreground);
+  box-shadow: var(--shadow-soft);
+}
+
+.admin-status,
+.admin-icon-button,
+.admin-primary-button,
+.admin-secondary-button,
+.admin-danger-button {
+  min-height: 2.75rem;
+  border-radius: 999px;
+}
+
+.admin-status.success {
+  background: color-mix(in srgb, var(--base-moss), transparent 78%);
+  color: var(--forest);
+}
+
+.admin-status.warning {
+  background: color-mix(in srgb, var(--base-harvest), transparent 76%);
+  color: color-mix(in srgb, var(--mustard), var(--foreground) 46%);
+}
+
+.admin-icon-button,
+.admin-secondary-button {
+  border: 1px solid color-mix(in srgb, var(--olive), transparent 62%);
+  background: color-mix(in srgb, var(--cream) 78%, var(--card));
+  color: var(--forest);
+  font-weight: 900;
+}
+
+.admin-primary-button {
+  background: var(--forest);
+  color: var(--background);
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--forest), transparent 78%);
+}
+
+.admin-danger-button {
+  background: var(--terracotta);
+  color: var(--background);
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--terracotta), transparent 78%);
+}
+
+.admin-notice,
+.admin-panel {
+  border: 1px solid var(--line);
+  border-radius: 2rem;
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  backdrop-filter: blur(18px);
+}
+
+.admin-metric,
+.admin-graph-options button,
+.admin-chart,
+.admin-progress-row,
+.admin-insights div,
+.admin-field input,
+.admin-field select,
+.admin-field textarea,
+.egg-size-card,
+.egg-size-card input,
+.admin-import-help,
+.admin-table-wrap,
+.admin-empty,
+.admin-chart-empty,
+.admin-edit-row {
+  border-color: var(--line);
+  border-radius: 1.5rem;
+  background: color-mix(in srgb, var(--card-soft) 70%, var(--card));
+  color: var(--foreground);
+}
+
+.admin-metric {
+  border-left-width: 5px;
+}
+
+.admin-metric.green {
+  border-left-color: var(--base-moss);
+}
+
+.admin-metric.gold {
+  border-left-color: var(--base-harvest);
+}
+
+.admin-metric.blue {
+  border-left-color: var(--base-plum);
+}
+
+.admin-metric.red {
+  border-left-color: var(--base-clay);
+}
+
+.admin-chart-style-options button,
+.admin-table-action {
+  border-color: color-mix(in srgb, var(--olive), transparent 62%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cream) 78%, var(--card));
+  color: var(--forest);
+}
+
+.admin-graph-options button.is-active,
+.admin-chart-style-options button.is-active {
+  border-color: var(--base-moss);
+  background: var(--forest);
+  color: var(--background);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--base-moss), transparent 76%);
+}
+
+.admin-progress {
+  background: color-mix(in srgb, var(--card-soft) 74%, var(--sage));
+}
+
+.admin-progress span {
+  background: var(--forest);
+}
+
+.admin-alert,
+.admin-warning-list span {
+  border-left-color: var(--base-harvest);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--base-harvest), transparent 82%);
+  color: color-mix(in srgb, var(--mustard), var(--foreground) 48%);
+}
+
+.admin-alert.danger {
+  border-left-color: var(--base-clay);
+}
+
+.admin-alert.info {
+  border-left-color: var(--base-plum);
+}
+
+.admin-alert.success {
+  border-left-color: var(--base-moss);
+}
+
+.admin-field input:focus,
+.admin-field select:focus,
+.admin-field textarea:focus,
+.egg-size-card input:focus {
+  border-color: var(--base-moss);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--base-moss), transparent 76%);
+}
+
+.egg-size-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 92%, white), color-mix(in srgb, var(--card-soft) 68%, var(--card)));
+}
+
+.egg-size-label {
+  color: var(--forest);
+}
+
+.egg-size-field-label {
+  color: var(--muted);
+}
+
+.admin-summary-strip span {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cream) 78%, var(--card));
+  color: var(--forest);
+}
+
+.admin-upload-box {
+  border-color: color-mix(in srgb, var(--base-moss), transparent 28%);
+  border-radius: 1.5rem;
+  background: color-mix(in srgb, var(--base-moss), transparent 86%);
+  color: var(--forest);
+}
+
+.admin-import-help {
+  border-left-color: var(--base-moss);
+}
+
+.admin-table th {
+  background: color-mix(in srgb, var(--card-soft) 74%, var(--card));
+}
+
+.admin-table th,
+.admin-table td {
+  border-bottom-color: var(--line);
+}
+
+.admin-table-action {
+  background: color-mix(in srgb, var(--base-clay), transparent 84%);
+  color: var(--terracotta);
+}
+
+.admin-loading {
+  color: var(--forest);
+}
+
+@media (min-width: 821px) {
+  .admin-sidebar {
+    margin: 18px 0 18px 18px;
+    height: calc(100vh - 36px);
+    border: 1px solid var(--line);
+    border-radius: 2rem;
   }
 }

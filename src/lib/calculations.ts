@@ -7,6 +7,12 @@ import {
   startOfMonth,
   subDays,
 } from "date-fns";
+import {
+  EGG_SIZE_ORDER,
+  formatEggSizeBreakdown,
+  getEggSizeTotal,
+  normalizeEggSizeBreakdown,
+} from "./egg-classification";
 import type {
   Alert,
   FarmState,
@@ -27,6 +33,12 @@ export const formatCop = (value: number) =>
 export const formatNumber = (value: number) =>
   new Intl.NumberFormat("es-CO", { maximumFractionDigits: 1 }).format(value);
 
+const getCollectedEggs = (log: FarmState["eggLogs"][number]) =>
+  log.coop1Eggs + log.coop2Eggs;
+
+const getGoodEggs = (log: FarmState["eggLogs"][number]) =>
+  getCollectedEggs(log) - log.crackedEggs;
+
 export function getMonthRange(date = new Date()) {
   return {
     start: startOfMonth(date),
@@ -44,12 +56,10 @@ export function calculateFarmMetrics(state: FarmState) {
   const totalChicks = state.coops.reduce((sum, coop) => sum + coop.chicks, 0);
   const totalBirds = totalHens + totalChicks;
   const todayLog = state.eggLogs.find((log) => log.date === today);
-  const eggsToday = todayLog
-    ? todayLog.coop1Eggs + todayLog.coop2Eggs - todayLog.crackedEggs
-    : 0;
+  const eggsToday = todayLog ? getGoodEggs(todayLog) : 0;
 
   const goodEggsCollected = state.eggLogs.reduce(
-    (sum, log) => sum + log.coop1Eggs + log.coop2Eggs - log.crackedEggs,
+    (sum, log) => sum + getGoodEggs(log),
     0,
   );
   const eggsSold = state.sales.reduce(
@@ -82,10 +92,7 @@ export function calculateFarmMetrics(state: FarmState) {
   const monthlyProfit = monthlySales - monthlyExpenses;
   const monthlyGoodEggs = state.eggLogs
     .filter((log) => isDateInCurrentMonth(log.date))
-    .reduce(
-      (sum, log) => sum + log.coop1Eggs + log.coop2Eggs - log.crackedEggs,
-      0,
-    );
+    .reduce((sum, log) => sum + getGoodEggs(log), 0);
   const monthlyCartonsProduced = monthlyGoodEggs / CARTON_SIZE || 1;
   const feedCostPerEgg = monthlyGoodEggs
     ? monthlyFeedSpend / monthlyGoodEggs
@@ -119,8 +126,7 @@ export function calculateFarmMetrics(state: FarmState) {
 export function getEggChartData(state: FarmState) {
   return state.eggLogs.slice(-10).map((log) => ({
     date: format(parseISO(log.date), "MMM d"),
-    "Coop 1": log.coop1Eggs,
-    "Coop 2": log.coop2Eggs,
+    Eggs: getCollectedEggs(log),
     Cracked: log.crackedEggs,
   }));
 }
@@ -200,13 +206,23 @@ export function getReportRows(state: FarmState) {
     const expensesForDay = state.expenses.filter(
       (expense) => expense.date === log.date,
     );
+    const sizeBreakdown = normalizeEggSizeBreakdown(log.sizeBreakdown);
 
     return {
       date: log.date,
-      coop1Eggs: log.coop1Eggs,
+      eggsCollected: getCollectedEggs(log),
+      coop1Eggs: getCollectedEggs(log),
       coop2Eggs: log.coop2Eggs,
       crackedEggs: log.crackedEggs,
-      goodEggs: log.coop1Eggs + log.coop2Eggs - log.crackedEggs,
+      goodEggs: getGoodEggs(log),
+      sizeC: sizeBreakdown.C,
+      sizeB: sizeBreakdown.B,
+      sizeA: sizeBreakdown.A,
+      sizeAA: sizeBreakdown.AA,
+      sizeAAA: sizeBreakdown.AAA,
+      sizeJumbo: sizeBreakdown.Jumbo,
+      sizeTotal: getEggSizeTotal(sizeBreakdown),
+      sizeSummary: formatEggSizeBreakdown(sizeBreakdown) || "-",
       cartonsSold: salesForDay.reduce((sum, sale) => sum + sale.cartons, 0),
       salesCop: salesForDay.reduce(
         (sum, sale) => sum + sale.cartons * sale.pricePerCartonCop,
@@ -225,13 +241,11 @@ export function buildAlerts(state: FarmState): Alert[] {
   const latestLogs = state.eggLogs.slice(-7);
   const avgEggs =
     latestLogs.reduce(
-      (sum, log) => sum + log.coop1Eggs + log.coop2Eggs - log.crackedEggs,
+      (sum, log) => sum + getGoodEggs(log),
       0,
     ) / Math.max(latestLogs.length, 1);
   const latestLog = state.eggLogs.at(-1);
-  const latestGoodEggs = latestLog
-    ? latestLog.coop1Eggs + latestLog.coop2Eggs - latestLog.crackedEggs
-    : 0;
+  const latestGoodEggs = latestLog ? getGoodEggs(latestLog) : 0;
   const alerts: Alert[] = [];
 
   if (metrics.feedStockKg < 90) {
@@ -381,14 +395,12 @@ export function buildInsights(state: FarmState): Insight[] {
     const date = parseISO(log.date);
     return date >= subDays(new Date(), 14) && date < subDays(new Date(), 7);
   });
-  const coop1Week = thisWeek.reduce((sum, log) => sum + log.coop1Eggs, 0);
-  const coop2Week = thisWeek.reduce((sum, log) => sum + log.coop2Eggs, 0);
   const thisWeekEggs = thisWeek.reduce(
-    (sum, log) => sum + log.coop1Eggs + log.coop2Eggs - log.crackedEggs,
+    (sum, log) => sum + getGoodEggs(log),
     0,
   );
   const previousWeekEggs = previousWeek.reduce(
-    (sum, log) => sum + log.coop1Eggs + log.coop2Eggs - log.crackedEggs,
+    (sum, log) => sum + getGoodEggs(log),
     0,
   );
   const productionChange = previousWeekEggs
@@ -398,16 +410,29 @@ export function buildInsights(state: FarmState): Insight[] {
   const totalInvestment = calculateTotalInvestment(
     state.investments ?? [],
   );
+  const sizeTotals = state.eggLogs.reduce(
+    (totals, log) => {
+      const breakdown = normalizeEggSizeBreakdown(log.sizeBreakdown);
+      EGG_SIZE_ORDER.forEach((category) => {
+        totals[category] += breakdown[category];
+      });
+      return totals;
+    },
+    normalizeEggSizeBreakdown(),
+  );
+  const topSize = EGG_SIZE_ORDER.reduce(
+    (winner, category) =>
+      sizeTotals[category] > sizeTotals[winner] ? category : winner,
+    "C",
+  );
+  const hasSizeData = getEggSizeTotal(sizeTotals) > 0;
 
   return [
     {
-      id: "coop-comparison",
-      title:
-        coop1Week >= coop2Week
-          ? "Coop 1 produced more eggs this week."
-          : "Coop 2 produced more eggs this week.",
-      value: `${Math.abs(coop1Week - coop2Week)} egg difference`,
-      detail: `Coop 1: ${coop1Week} eggs. Coop 2: ${coop2Week} eggs.`,
+      id: "weekly-production",
+      title: "Eggs collected this week",
+      value: `${thisWeekEggs} eggs`,
+      detail: `${formatNumber(thisWeekEggs / Math.max(thisWeek.length, 1))} good eggs per logged day.`,
     },
     {
       id: "cartons-ready",
@@ -433,6 +458,16 @@ export function buildInsights(state: FarmState): Insight[] {
       value: formatCop(metrics.feedCostPerCarton),
       detail: `${formatCop(metrics.feedCostPerEgg)} per egg this month.`,
     },
+    ...(hasSizeData
+      ? [
+          {
+            id: "top-egg-size",
+            title: "Most common egg size",
+            value: topSize,
+            detail: formatEggSizeBreakdown(sizeTotals),
+          } as Insight,
+        ]
+      : []),
     {
       id: "egg-trend",
       title:

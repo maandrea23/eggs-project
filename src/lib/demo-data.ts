@@ -1,7 +1,6 @@
-import { format, subDays } from "date-fns";
+import { migrateFarmState } from "./farm-state-migration";
 import type { FarmState, InvestmentItem } from "./types";
 
-const isoDay = (date: Date) => format(date, "yyyy-MM-dd");
 
 const realInvestments: InvestmentItem[] = [
   // === GALPON CONSTRUCCION ===
@@ -119,21 +118,13 @@ const realInvestments: InvestmentItem[] = [
 ];
 
 export function createFreshFarmState(): FarmState {
-  return {
+  return migrateFarmState({
     coops: [
       {
         id: "coop-1",
         name: "Coop 1",
-        capacity: 200,
-        hens: 180,
-        chicks: 0,
-        notes: "Gallinas en produccion",
-      },
-      {
-        id: "coop-2",
-        name: "Coop 2",
-        capacity: 200,
-        hens: 198,
+        capacity: 400,
+        hens: 378,
         chicks: 0,
         notes: "Gallinas en produccion",
       },
@@ -144,15 +135,7 @@ export function createFreshFarmState(): FarmState {
         date: "2026-02-11",
         coopId: "coop-1",
         type: "new_birds",
-        quantity: 200,
-        notes: "Llegada de 400 gallinas ponedoras, distribuidas en Coop 1 y Coop 2",
-      },
-      {
-        id: "move-init-2",
-        date: "2026-02-11",
-        coopId: "coop-2",
-        type: "new_birds",
-        quantity: 200,
+        quantity: 400,
         notes: "Llegada de 400 gallinas ponedoras",
       },
     ],
@@ -172,18 +155,18 @@ export function createFreshFarmState(): FarmState {
       { id: "egg-2026-06-14", date: "2026-06-14", coop1Eggs: 24, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-14T00:00:00Z" },
       { id: "egg-2026-06-15", date: "2026-06-15", coop1Eggs: 25, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-15T00:00:00Z" },
       { id: "egg-2026-06-16", date: "2026-06-16", coop1Eggs: 36, coop2Eggs: 0, crackedEggs: 0, notes: "Semana 19", synced: true, createdAt: "2026-06-16T00:00:00Z" },
-      { id: "egg-2026-06-17", date: "2026-06-17", coop1Eggs: 26, coop2Eggs: 5, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-17T00:00:00Z" },
-      { id: "egg-2026-06-18", date: "2026-06-18", coop1Eggs: 37, coop2Eggs: 4, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-18T00:00:00Z" },
-      { id: "egg-2026-06-19", date: "2026-06-19", coop1Eggs: 45, coop2Eggs: 5, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-19T00:00:00Z" },
-      { id: "egg-2026-06-20", date: "2026-06-20", coop1Eggs: 54, coop2Eggs: 8, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-20T00:00:00Z" },
-      { id: "egg-2026-06-21", date: "2026-06-21", coop1Eggs: 59, coop2Eggs: 11, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-21T00:00:00Z" },
-      { id: "egg-2026-06-22", date: "2026-06-22", coop1Eggs: 74, coop2Eggs: 13, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-22T00:00:00Z" },
-      { id: "egg-2026-06-23", date: "2026-06-23", coop1Eggs: 84, coop2Eggs: 18, crackedEggs: 0, notes: "Semana 20", synced: true, createdAt: "2026-06-23T00:00:00Z" },
-      { id: "egg-2026-06-24", date: "2026-06-24", coop1Eggs: 77, coop2Eggs: 31, crackedEggs: 2, notes: "", synced: true, createdAt: "2026-06-24T00:00:00Z" },
-      { id: "egg-2026-06-25", date: "2026-06-25", coop1Eggs: 85, coop2Eggs: 48, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-25T00:00:00Z" },
-      { id: "egg-2026-06-26", date: "2026-06-26", coop1Eggs: 96, coop2Eggs: 61, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-26T00:00:00Z" },
-      { id: "egg-2026-06-27", date: "2026-06-27", coop1Eggs: 91, coop2Eggs: 67, crackedEggs: 4, notes: "", synced: true, createdAt: "2026-06-27T00:00:00Z" },
-      { id: "egg-2026-06-28", date: "2026-06-28", coop1Eggs: 90, coop2Eggs: 92, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-28T00:00:00Z" },
+      { id: "egg-2026-06-17", date: "2026-06-17", coop1Eggs: 31, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-17T00:00:00Z" },
+      { id: "egg-2026-06-18", date: "2026-06-18", coop1Eggs: 41, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-18T00:00:00Z" },
+      { id: "egg-2026-06-19", date: "2026-06-19", coop1Eggs: 50, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-19T00:00:00Z" },
+      { id: "egg-2026-06-20", date: "2026-06-20", coop1Eggs: 62, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-20T00:00:00Z" },
+      { id: "egg-2026-06-21", date: "2026-06-21", coop1Eggs: 70, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-21T00:00:00Z" },
+      { id: "egg-2026-06-22", date: "2026-06-22", coop1Eggs: 87, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-22T00:00:00Z" },
+      { id: "egg-2026-06-23", date: "2026-06-23", coop1Eggs: 102, coop2Eggs: 0, crackedEggs: 0, notes: "Semana 20", synced: true, createdAt: "2026-06-23T00:00:00Z" },
+      { id: "egg-2026-06-24", date: "2026-06-24", coop1Eggs: 108, coop2Eggs: 0, crackedEggs: 2, notes: "", synced: true, createdAt: "2026-06-24T00:00:00Z" },
+      { id: "egg-2026-06-25", date: "2026-06-25", coop1Eggs: 133, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-25T00:00:00Z" },
+      { id: "egg-2026-06-26", date: "2026-06-26", coop1Eggs: 157, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-26T00:00:00Z" },
+      { id: "egg-2026-06-27", date: "2026-06-27", coop1Eggs: 158, coop2Eggs: 0, crackedEggs: 4, notes: "", synced: true, createdAt: "2026-06-27T00:00:00Z" },
+      { id: "egg-2026-06-28", date: "2026-06-28", coop1Eggs: 182, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-28T00:00:00Z" },
       { id: "egg-2026-06-29", date: "2026-06-29", coop1Eggs: 0, coop2Eggs: 0, crackedEggs: 0, notes: "No data", synced: true, createdAt: "2026-06-29T00:00:00Z" },
     ],
     sales: [
@@ -267,7 +250,7 @@ export function createFreshFarmState(): FarmState {
     ],
     investments: realInvestments,
     offlineQueue: [],
-  };
+  });
 }
 
 export function createDemoFarmState(): FarmState {

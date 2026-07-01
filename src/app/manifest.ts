@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Brianna Eggs Farm Manager",
     short_name: "Brianna Eggs",
     description:
-      "Mobile-first poultry farm management app for a two-coop egg farm.",
+      "Mobile-first poultry farm management app for a one-coop egg farm.",
     start_url: "/",
     display: "standalone",
     background_color: "#f6f2ea",

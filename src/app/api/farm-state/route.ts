@@ -17,7 +17,7 @@ export async function GET() {
         error:
           error instanceof Error
             ? error.message
-            : "Unable to read Dailey database.",
+            : "Unable to read farm data.",
       },
       { status: 503 },
     );
@@ -43,7 +43,7 @@ export async function PUT(request: Request) {
         error:
           error instanceof Error
             ? error.message
-            : "Unable to save Dailey database state.",
+            : "Unable to save farm data.",
       },
       { status: 503 },
     );

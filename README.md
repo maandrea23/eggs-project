@@ -1,6 +1,6 @@
 # Brianna Eggs Farm Manager
 
-Mobile-first poultry farm management MVP for one small egg farm with 2 automated coops, about 250 hens, COP money tracking, demo data, offline daily logging, charts, CSV/PDF exports, and Dailey database sync.
+Mobile-first poultry farm management MVP for one small egg farm with COP money tracking, offline daily logging, charts, CSV/PDF exports, and farm data persistence.
 
 ## Run It Locally
 
@@ -32,16 +32,16 @@ The owner mode saves data in this browser with `localStorage`, so daily egg logs
 
 ## What Is Included
 
-- Owner-mode login screen for the internal farm tool.
-- Dashboard for birds, hens, coops, eggs collected, cartons of 30, loose eggs, feed stock, sales, expenses, and profit in COP.
-- Coop management for names, capacity, hens, chicks, bird moves, deaths, removals, and new birds.
-- Fast daily egg logging for Coop 1, Coop 2, cracked eggs, cartons, loose eggs, and notes.
+- Owner and operator modes for the internal farm tool.
+- Dashboard for birds, hens, coop capacity, eggs collected, cartons of 30, loose eggs, feed stock, sales, expenses, and profit in COP.
+- Coop management for name, capacity, hens, chicks, deaths, removals, and new birds.
+- Fast daily egg logging for eggs collected, cracked eggs, cartons, loose eggs, and notes.
 - Sales tracking by cartons of 30 with COP totals and optional customer name.
 - Feed purchase, feed usage, and farm expense tracking.
 - Inventory and low-stock alerts.
 - Health records and maintenance reminders.
 - Basic reports with charts, CSV export, and PDF export.
-- Demo data for 2 coops and 250 hens.
+- Blank starting records so the farm can enter its own production data.
 
 ## Dailey Database
 
@@ -87,7 +87,7 @@ The app is set up to use Dailey's managed database when deployed.
 
 - `src/components/FarmApp.tsx` - the mobile-first app UI and local workflows.
 - `src/lib/types.ts` - shared TypeScript data types.
-- `src/lib/demo-data.ts` - seed/demo farm records.
+- `src/lib/farm-state-defaults.ts` - blank starting farm records.
 - `src/lib/calculations.ts` - dashboard, report, alert, and insight calculations.
 - `src/lib/local-store.ts` - offline localStorage persistence.
 - `src/lib/dailey-db.ts` - server-side Dailey MySQL persistence.
