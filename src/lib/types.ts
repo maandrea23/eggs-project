@@ -1,28 +1,12 @@
-export type Coop = {
-  id: string;
-  name: string;
-  capacity: number;
-  hens: number;
-  chicks: number;
-  notes?: string;
-};
-
-export type BirdMovement = {
-  id: string;
-  date: string;
-  coopId: string;
-  type: "new_birds" | "death" | "removal" | "transfer_in" | "transfer_out";
-  quantity: number;
-  notes?: string;
-};
-
 export type EggLog = {
   id: string;
   date: string;
-  coop1Eggs: number;
-  coop2Eggs: number;
+  totalEggs: number;
   crackedEggs: number;
   sizeBreakdown?: EggSizeBreakdown;
+  feedConsumedKg: number;
+  vitaminInWater: string;
+  vitaminInFeed: string;
   notes?: string;
   synced: boolean;
   createdAt: string;
@@ -40,6 +24,22 @@ export type EggWeightClassification = {
   minGrams?: number;
   maxGrams?: number;
   trayType: EggTrayType;
+};
+
+export type FlockArrival = {
+  id: string;
+  date: string;
+  quantity: number;
+  breed?: string;
+  notes?: string;
+};
+
+export type MortalityRecord = {
+  id: string;
+  date: string;
+  deaths: number;
+  cause?: string;
+  notes?: string;
 };
 
 export type Sale = {
@@ -63,7 +63,6 @@ export type FeedUsage = {
   id: string;
   date: string;
   quantityKg: number;
-  coopId?: string;
   notes?: string;
 };
 
@@ -98,7 +97,6 @@ export type InventoryItem = {
 export type HealthRecord = {
   id: string;
   date: string;
-  coopId?: string;
   type: "sick" | "death" | "vaccination" | "medicine";
   sickBirds?: number;
   deaths?: number;
@@ -109,7 +107,6 @@ export type MaintenanceTask = {
   id: string;
   title: string;
   dueDate: string;
-  coopId?: string;
   status: "open" | "done";
   notes?: string;
 };
@@ -152,8 +149,8 @@ export type InvestmentItem = {
 export type UserRole = "owner" | "operator";
 
 export type FarmState = {
-  coops: Coop[];
-  birdMovements: BirdMovement[];
+  flockArrivals: FlockArrival[];
+  mortalityRecords: MortalityRecord[];
   eggLogs: EggLog[];
   sales: Sale[];
   feedPurchases: FeedPurchase[];

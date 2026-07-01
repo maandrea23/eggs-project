@@ -6,7 +6,10 @@ import {
   parseISO,
   startOfMonth,
   subDays,
+  getISOWeek,
+  startOfWeek,
 } from "date-fns";
+import { es } from "date-fns/locale";
 import {
   EGG_SIZE_ORDER,
   formatEggSizeBreakdown,
@@ -21,6 +24,7 @@ import type {
   Insight,
   InvestmentCategory,
   InvestmentItem,
+  EggLog,
 } from "./types";
 
 export const CARTON_SIZE = 30;
@@ -35,11 +39,28 @@ export const formatCop = (value: number) =>
 export const formatNumber = (value: number) =>
   new Intl.NumberFormat("es-CO", { maximumFractionDigits: 1 }).format(value);
 
-const getCollectedEggs = (log: FarmState["eggLogs"][number]) =>
-  log.coop1Eggs + log.coop2Eggs;
+export const getWeekId = (dateStr: string) => {
+  const date = parseISO(dateStr);
+  const year = date.getFullYear();
+  const week = getISOWeek(date);
+  return `${year}-W${String(week).padStart(2, "0")}`;
+};
 
-const getGoodEggs = (log: FarmState["eggLogs"][number]) =>
-  getCollectedEggs(log) - log.crackedEggs;
+export const getWeekRange = (dateStr: string) => {
+  const date = parseISO(dateStr);
+  const start = startOfWeek(date, { weekStartsOn: 1 });
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return { start, end };
+};
+
+export const getDayName = (dateStr: string) => {
+  return format(parseISO(dateStr), "EEEE", { locale: es });
+};
+
+const getCollectedEggs = (log: EggLog) => log.totalEggs;
+
+const getGoodEggs = (log: EggLog) => getCollectedEggs(log) - log.crackedEggs;
 
 function getCategorySaleCount(
   sale: FarmState["sales"][number],
@@ -84,9 +105,15 @@ export function isDateInCurrentMonth(date: string) {
 
 export function calculateFarmMetrics(state: FarmState) {
   const today = format(new Date(), "yyyy-MM-dd");
-  const totalHens = state.coops.reduce((sum, coop) => sum + coop.hens, 0);
-  const totalChicks = state.coops.reduce((sum, coop) => sum + coop.chicks, 0);
-  const totalBirds = totalHens + totalChicks;
+  const totalArrivals = state.flockArrivals.reduce(
+    (sum, a) => sum + a.quantity,
+    0,
+  );
+  const totalDeaths = state.mortalityRecords.reduce(
+    (sum, m) => sum + m.deaths,
+    0,
+  );
+  const totalBirds = Math.max(totalArrivals - totalDeaths, 0);
   const todayLog = state.eggLogs.find((log) => log.date === today);
   const eggsToday = todayLog ? getGoodEggs(todayLog) : 0;
 
@@ -106,10 +133,15 @@ export function calculateFarmMetrics(state: FarmState) {
     (sum, item) => sum + item.quantityKg,
     0,
   );
-  const feedUsedKg = state.feedUsage.reduce(
+  const feedUsages = state.feedUsage.reduce(
     (sum, item) => sum + item.quantityKg,
     0,
   );
+  const feedFromEggLogs = state.eggLogs.reduce(
+    (sum, log) => sum + (log.feedConsumedKg || 0),
+    0,
+  );
+  const feedUsedKg = feedUsages + feedFromEggLogs;
   const feedStockKg = Math.max(feedPurchasedKg - feedUsedKg, 0);
   const monthlySales = state.sales
     .filter((sale) => isDateInCurrentMonth(sale.date))
@@ -131,16 +163,18 @@ export function calculateFarmMetrics(state: FarmState) {
     : 0;
   const feedCostPerCarton = monthlyFeedSpend / monthlyCartonsProduced;
   const avgDailyFeedKg =
-    state.feedUsage.slice(-7).reduce((sum, item) => sum + item.quantityKg, 0) /
-      Math.max(state.feedUsage.slice(-7).length, 1) || 0;
+    state.eggLogs
+      .slice(-7)
+      .reduce((sum, log) => sum + (log.feedConsumedKg || 0), 0) /
+      Math.max(state.eggLogs.slice(-7).length, 1) || 0;
   const feedDaysRemaining = avgDailyFeedKg
     ? Math.floor(feedStockKg / avgDailyFeedKg)
     : 0;
 
   return {
-    totalHens,
-    totalChicks,
     totalBirds,
+    totalArrivals,
+    totalDeaths,
     eggsToday,
     cartonsAvailable,
     looseEggs,
@@ -242,13 +276,13 @@ export function getEggStockByCategoryData(state: FarmState) {
     const eggs = stockByCategory[category];
 
     return {
-    category,
-    eggs,
-    cartons: Math.floor(eggs / CARTON_SIZE),
-    loose: eggs % CARTON_SIZE,
-    percentage: categorizedAvailable
-      ? Math.round((eggs / categorizedAvailable) * 100)
-      : 0,
+      category,
+      eggs,
+      cartons: Math.floor(eggs / CARTON_SIZE),
+      loose: eggs % CARTON_SIZE,
+      percentage: categorizedAvailable
+        ? Math.round((eggs / categorizedAvailable) * 100)
+        : 0,
     };
   });
 
@@ -321,6 +355,18 @@ export function getFeedChartData(state: FarmState) {
     totalsByDate.set(usage.date, current);
   }
 
+  for (const log of state.eggLogs) {
+    if (log.feedConsumedKg > 0) {
+      const current = totalsByDate.get(log.date) ?? {
+        purchasedKg: 0,
+        usedKg: 0,
+        spendCop: 0,
+      };
+      current.usedKg += log.feedConsumedKg;
+      totalsByDate.set(log.date, current);
+    }
+  }
+
   return Array.from(totalsByDate.entries())
     .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
     .slice(-14)
@@ -341,10 +387,9 @@ export function getReportRows(state: FarmState) {
     return {
       date: log.date,
       eggsCollected: getCollectedEggs(log),
-      coop1Eggs: getCollectedEggs(log),
-      coop2Eggs: log.coop2Eggs,
       crackedEggs: log.crackedEggs,
       goodEggs: getGoodEggs(log),
+      feedKg: log.feedConsumedKg || 0,
       sizeC: sizeBreakdown.C,
       sizeB: sizeBreakdown.B,
       sizeA: sizeBreakdown.A,
@@ -618,4 +663,100 @@ export function buildInsights(state: FarmState): Insight[] {
         ]
       : []),
   ];
+}
+
+export function getWeeklyData(state: FarmState, weekId: string) {
+  const logs = state.eggLogs.filter((log) => getWeekId(log.date) === weekId);
+  const weekStart = logs.length > 0 ? getWeekRange(logs[0].date).start : null;
+  const weekEnd = logs.length > 0 ? getWeekRange(logs[0].date).end : null;
+
+  const vaccines = state.healthRecords.filter(
+    (r) =>
+      r.type === "vaccination" &&
+      logs.some((log) => log.date === r.date),
+  );
+
+  const totalEggs = logs.reduce((sum, log) => sum + getCollectedEggs(log), 0);
+  const totalCracked = logs.reduce((sum, log) => sum + log.crackedEggs, 0);
+  const goodEggs = logs.reduce((sum, log) => sum + getGoodEggs(log), 0);
+  const totalBirds =
+    state.flockArrivals.reduce((sum, a) => sum + a.quantity, 0) -
+    state.mortalityRecords.reduce((sum, m) => sum + m.deaths, 0);
+  const avgDailyEggs = logs.length > 0 ? goodEggs / logs.length : 0;
+  const layingPercentage = totalBirds > 0
+    ? Math.round((avgDailyEggs / totalBirds) * 100)
+    : 0;
+
+  const feedConsumed = logs.reduce((sum, log) => sum + (log.feedConsumedKg || 0), 0);
+  const weeklyCosts = state.expenses.filter((e) =>
+    logs.some((log) => log.date === e.date),
+  );
+  const weeklySales = state.sales.filter((s) =>
+    logs.some((log) => log.date === s.date),
+  );
+  const totalRevenue = weeklySales.reduce(
+    (sum, s) => sum + s.cartons * s.pricePerCartonCop,
+    0,
+  );
+
+  return {
+    weekId,
+    weekStart,
+    weekEnd,
+    logs,
+    vaccines,
+    totalEggs,
+    totalCracked,
+    goodEggs,
+    layingPercentage,
+    feedConsumed,
+    totalRevenue,
+    avgDailyEggs: Math.round(avgDailyEggs),
+    weeklySales,
+    weeklyCosts,
+  };
+}
+
+export function getAllWeeks(state: FarmState): string[] {
+  const weeks = new Set<string>();
+  for (const log of state.eggLogs) {
+    weeks.add(getWeekId(log.date));
+  }
+  return Array.from(weeks).sort();
+}
+
+export function getCostPerEggByWeek(state: FarmState): Record<string, number> {
+  const weeklyFeedSpend = new Map<string, number>();
+  const weeklyEggs = new Map<string, number>();
+
+  for (const purchase of state.feedPurchases) {
+    const weekId = getWeekId(purchase.date);
+    weeklyFeedSpend.set(
+      weekId,
+      (weeklyFeedSpend.get(weekId) ?? 0) + purchase.priceCop,
+    );
+  }
+
+  for (const log of state.eggLogs) {
+    const weekId = getWeekId(log.date);
+    weeklyEggs.set(weekId, (weeklyEggs.get(weekId) ?? 0) + getGoodEggs(log));
+  }
+
+  const result: Record<string, number> = {};
+  for (const weekId of weeklyEggs.keys()) {
+    const eggs = weeklyEggs.get(weekId) ?? 1;
+    const feedCost = weeklyFeedSpend.get(weekId) ?? 0;
+    result[weekId] = feedCost / eggs;
+  }
+  return result;
+}
+
+export function getSalePriceByWeight(sale: FarmState["sales"][number]): {
+  category: string;
+  pricePerCarton: number;
+} {
+  const name = sale.customerName ?? "";
+  const match = name.match(/\b(C|B|A|AA|AAA|Jumbo)\b/i);
+  const category = match ? match[1].toUpperCase() : "Sin categoría";
+  return { category, pricePerCarton: sale.pricePerCartonCop };
 }

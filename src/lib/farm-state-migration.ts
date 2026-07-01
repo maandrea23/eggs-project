@@ -3,62 +3,7 @@ import {
   getEggSizeTotal,
   normalizeEggSizeBreakdown,
 } from "./egg-classification";
-import type { Coop, EggSizeBreakdown, EggSizeCategory, FarmState } from "./types";
-
-const PRIMARY_COOP_ID = "coop-1";
-
-function buildPrimaryCoop(coops: Coop[] = []): Coop {
-  const primaryCoop = coops.find((coop) => coop.id === PRIMARY_COOP_ID) ??
-    coops[0] ?? {
-      id: PRIMARY_COOP_ID,
-      name: "Coop 1",
-      capacity: 0,
-      hens: 0,
-      chicks: 0,
-    };
-
-  const combinedCapacity = coops.reduce((sum, coop) => sum + (coop.capacity || 0), 0);
-  const combinedHens = coops.reduce((sum, coop) => sum + (coop.hens || 0), 0);
-  const combinedChicks = coops.reduce((sum, coop) => sum + (coop.chicks || 0), 0);
-
-  return {
-    ...primaryCoop,
-    id: PRIMARY_COOP_ID,
-    name: primaryCoop.name || "Coop 1",
-    capacity: combinedCapacity || primaryCoop.capacity || 0,
-    hens: combinedHens || primaryCoop.hens || 0,
-    chicks: combinedChicks || primaryCoop.chicks || 0,
-  };
-}
-
-function normalizeOneCoopState(state: FarmState): FarmState {
-  return {
-    ...state,
-    coops: [buildPrimaryCoop(state.coops ?? [])],
-    birdMovements: (state.birdMovements ?? []).map((movement) => ({
-      ...movement,
-      coopId: PRIMARY_COOP_ID,
-      notes: movement.notes?.replace(/Coop\s*2/g, "Coop 1"),
-    })),
-    eggLogs: (state.eggLogs ?? []).map((log) => ({
-      ...log,
-      coop1Eggs: (log.coop1Eggs || 0) + (log.coop2Eggs || 0),
-      coop2Eggs: 0,
-    })),
-    feedUsage: (state.feedUsage ?? []).map((usage) => ({
-      ...usage,
-      coopId: usage.coopId ? PRIMARY_COOP_ID : usage.coopId,
-    })),
-    healthRecords: (state.healthRecords ?? []).map((record) => ({
-      ...record,
-      coopId: record.coopId ? PRIMARY_COOP_ID : record.coopId,
-    })),
-    maintenanceTasks: (state.maintenanceTasks ?? []).map((task) => ({
-      ...task,
-      coopId: task.coopId ? PRIMARY_COOP_ID : task.coopId,
-    })),
-  };
-}
+import type { EggSizeBreakdown, EggSizeCategory, FarmState } from "./types";
 
 function parseSizeBreakdownFromNotes(notes?: string) {
   if (!notes) {
@@ -123,13 +68,20 @@ function buildBreakdownByDateFromSales(state: FarmState) {
 }
 
 export function migrateFarmState(state: FarmState): FarmState {
-  const normalizedState = normalizeOneCoopState(state);
-  const salesBreakdownByDate = buildBreakdownByDateFromSales(normalizedState);
+  const withDefaults: FarmState = {
+    ...state,
+    flockArrivals: (state as any).flockArrivals ?? [],
+    mortalityRecords: (state as any).mortalityRecords ?? [],
+  };
+
+  const salesBreakdownByDate = buildBreakdownByDateFromSales(withDefaults);
 
   return {
-    ...normalizedState,
-    eggLogs: (normalizedState.eggLogs ?? []).map((log) => {
-      const existingBreakdown = normalizeEggSizeBreakdown(log.sizeBreakdown);
+    ...withDefaults,
+    eggLogs: (withDefaults.eggLogs ?? []).map((log) => {
+      const existingBreakdown = normalizeEggSizeBreakdown(
+        (log as any).sizeBreakdown,
+      );
       const notesBreakdown = parseSizeBreakdownFromNotes(log.notes);
       const salesBreakdown = salesBreakdownByDate.get(log.date);
       const sizeBreakdown =
@@ -138,7 +90,18 @@ export function migrateFarmState(state: FarmState): FarmState {
           : notesBreakdown ?? salesBreakdown;
 
       return {
-        ...log,
+        id: (log as any).id,
+        date: (log as any).date,
+        totalEggs:
+          (log as any).totalEggs ??
+          ((log as any).coop1Eggs ?? 0) + ((log as any).coop2Eggs ?? 0),
+        crackedEggs: (log as any).crackedEggs ?? 0,
+        feedConsumedKg: (log as any).feedConsumedKg ?? 0,
+        vitaminInWater: (log as any).vitaminInWater ?? "",
+        vitaminInFeed: (log as any).vitaminInFeed ?? "",
+        notes: (log as any).notes,
+        synced: (log as any).synced ?? true,
+        createdAt: (log as any).createdAt ?? new Date().toISOString(),
         ...(sizeBreakdown
           ? { sizeBreakdown: normalizeEggSizeBreakdown(sizeBreakdown) }
           : {}),

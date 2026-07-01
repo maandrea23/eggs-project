@@ -5,10 +5,15 @@ import {
   DollarSign,
   Egg,
   PiggyBank,
+  Plus,
+  Save,
+  Trash2,
   TrendingDown,
   TrendingUp,
+  X,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import {
   Bar,
   BarChart,
@@ -18,6 +23,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { format } from "date-fns";
 import {
   calculateInvestmentBreakdown,
   formatCop,
@@ -25,7 +31,39 @@ import {
   getBirdsTotalInvestment,
   getGalponTotal,
 } from "@/lib/calculations";
-import type { FarmState, InvestmentItem } from "@/lib/types";
+import type { FarmState, InvestmentItem, InvestmentCategory } from "@/lib/types";
+
+const todayIso = () => format(new Date(), "yyyy-MM-dd");
+const makeId = (prefix: string) =>
+  `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Date.now()}`;
+
+const investmentCategories: InvestmentCategory[] = [
+  "galpon_construccion",
+  "galpon_materiales_olga",
+  "galpon_materiales_homecenter",
+  "galpon_materiales_laroca",
+  "gallinas_compra",
+  "gallinas_alimento",
+  "gallinas_medicina_vacunas",
+  "gallinas_implementos",
+  "gastos_semanales",
+  "cuidandero",
+  "otros",
+];
+
+const categoryLabels: Record<InvestmentCategory, string> = {
+  galpon_construccion: "Galpon - Construccion",
+  galpon_materiales_olga: "Galpon - Materiales OLGA",
+  galpon_materiales_homecenter: "Galpon - Materiales Homecenter",
+  galpon_materiales_laroca: "Galpon - Materiales La Roca",
+  gallinas_compra: "Gallinas - Compra",
+  gallinas_alimento: "Gallinas - Alimento",
+  gallinas_medicina_vacunas: "Gallinas - Medicina/Vacunas",
+  gallinas_implementos: "Gallinas - Implementos",
+  gastos_semanales: "Gastos Semanales",
+  cuidandero: "Cuidandero",
+  otros: "Otros",
+};
 
 function Card({
   title,
@@ -51,9 +89,57 @@ function Card({
 
 export default function InvestmentSection({
   state,
+  updateState,
 }: {
   state: FarmState;
+  updateState?: (next: FarmState, msg?: string) => void;
 }) {
+  const [showForm, setShowForm] = useState(false);
+  const [newItem, setNewItem] = useState({
+    date: todayIso(),
+    category: "galpon_construccion" as InvestmentCategory,
+    subcategory: "",
+    description: "",
+    quantity: 1,
+    unit: "unidad",
+    unitPrice: 0,
+    totalPrice: 0,
+    supplier: "",
+  });
+
+  function submitInvestment(e: FormEvent) {
+    e.preventDefault();
+    if (!updateState) return;
+    const next = { id: makeId("investment"), ...newItem };
+    updateState(
+      { ...state, investments: [...(state.investments ?? []), next] },
+      "Investment saved.",
+    );
+    setNewItem({
+      date: todayIso(),
+      category: "galpon_construccion" as InvestmentCategory,
+      subcategory: "",
+      description: "",
+      quantity: 1,
+      unit: "unidad",
+      unitPrice: 0,
+      totalPrice: 0,
+      supplier: "",
+    });
+    setShowForm(false);
+  }
+
+  function removeInvestment(id: string) {
+    if (!updateState) return;
+    updateState(
+      {
+        ...state,
+        investments: (state.investments ?? []).filter((x) => x.id !== id),
+      },
+      "Removed.",
+    );
+  }
+
   const breakdown = useMemo(
     () => calculateInvestmentBreakdown(state.investments ?? []),
     [state.investments],
@@ -144,6 +230,95 @@ export default function InvestmentSection({
           </div>
         </div>
       </section>
+
+      {updateState && (
+        <section className="floating-card p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="organic-illustration grid h-10 w-10 place-items-center rounded-[1.25rem] shadow-sm">
+                <Plus size={20} />
+              </div>
+              <h3 className="text-lg font-black">Agregar inversion</h3>
+            </div>
+            {!showForm && (
+              <button
+                className="primary-button h-11 px-5 text-sm"
+                onClick={() => setShowForm(true)}
+              >
+                <Plus size={16} /> Nueva inversion
+              </button>
+            )}
+          </div>
+          {showForm && (
+            <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={submitInvestment}>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Date</label>
+                <input className="input" type="date" value={newItem.date}
+                  onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Category</label>
+                <select className="input" value={newItem.category}
+                  onChange={(e) => setNewItem({ ...newItem, category: e.target.value as InvestmentCategory })}>
+                  {investmentCategories.map((c) => (
+                    <option key={c} value={c}>{categoryLabels[c]}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Subcategory</label>
+                <input className="input" value={newItem.subcategory}
+                  onChange={(e) => setNewItem({ ...newItem, subcategory: e.target.value })} />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Description</label>
+                <input className="input" value={newItem.description}
+                  onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Quantity</label>
+                <input className="input" inputMode="numeric" value={newItem.quantity || ""}
+                  onChange={(e) => {
+                    const q = parseInt(e.target.value) || 0;
+                    setNewItem({ ...newItem, quantity: q, totalPrice: q * newItem.unitPrice });
+                  }} />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Unit</label>
+                <input className="input" value={newItem.unit}
+                  onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })} />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Unit price COP</label>
+                <input className="input" inputMode="numeric" value={newItem.unitPrice || ""}
+                  onChange={(e) => {
+                    const p = parseInt(e.target.value) || 0;
+                    setNewItem({ ...newItem, unitPrice: p, totalPrice: newItem.quantity * p });
+                  }} />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Total price COP</label>
+                <input className="input" inputMode="numeric" value={newItem.totalPrice || ""}
+                  onChange={(e) => setNewItem({ ...newItem, totalPrice: parseInt(e.target.value) || 0 })} />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-bold text-[var(--muted)]">Supplier</label>
+                <input className="input" value={newItem.supplier}
+                  onChange={(e) => setNewItem({ ...newItem, supplier: e.target.value })} />
+              </div>
+              <div className="flex items-end gap-2 sm:col-span-2">
+                <button className="primary-button h-13 flex-1">
+                  <Save size={17} /> Save
+                </button>
+                <button type="button" className="h-13 w-13 rounded-2xl bg-[var(--line)] grid place-items-center"
+                  onClick={() => setShowForm(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      )}
 
       <section className="grid gap-4 lg:grid-cols-3">
         <Card title="Galpon" icon={Building2}>
@@ -318,7 +493,7 @@ export default function InvestmentSection({
                 .map((inv) => (
                   <div
                     key={inv.id}
-                    className="soft-panel flex items-center justify-between p-3"
+                    className="soft-panel flex items-center justify-between gap-2 p-3"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold">
@@ -329,9 +504,19 @@ export default function InvestmentSection({
                         {inv.supplier ? ` - ${inv.supplier}` : ""}
                       </p>
                     </div>
-                    <span className="ml-3 shrink-0 text-sm font-black">
-                      {formatCop(inv.totalPrice)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-sm font-black">
+                        {formatCop(inv.totalPrice)}
+                      </span>
+                      {updateState && (
+                        <button
+                          className="grid h-8 w-8 place-items-center rounded-xl bg-[var(--line)] text-[var(--clay)]"
+                          onClick={() => removeInvestment(inv.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               {(!state.investments ||
