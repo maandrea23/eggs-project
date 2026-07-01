@@ -2082,7 +2082,7 @@ function EggsSection({
           <div className="admin-panel-header compact">
             <div>
               <p className="admin-eyebrow">Current stock</p>
-              <h3>Eggs by category</h3>
+              <h3>Eggs in stock</h3>
             </div>
             <div className="admin-stock-total">
               <strong>{formatNumber(stockByCategory.eggsAvailable)}</strong>
