@@ -35,6 +35,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -47,6 +48,7 @@ import {
   formatCop,
   formatNumber,
   getEggChartData,
+  getEggStockByCategoryData,
   getFeedChartData,
   getReportRows,
   getSalesChartData,
@@ -119,7 +121,7 @@ const tabs: { id: TabKey; label: string; icon: React.ComponentType<{ size?: numb
   [
     { id: "dashboard", label: "Dashboard", icon: Home },
     { id: "eggs", label: "Eggs", icon: Egg },
-    { id: "coops", label: "Coops", icon: Bird },
+    { id: "coops", label: "Flock", icon: Bird },
     { id: "sales", label: "Sales", icon: ShoppingCart },
     { id: "expenses", label: "Expenses", icon: ReceiptText },
     { id: "investment", label: "Investment", icon: PiggyBank },
@@ -143,11 +145,21 @@ const expenseCategories: Expense["category"][] = [
 const chartMetricLabels: Record<string, string> = {
   averageCartonPrice: "Avg carton price",
   cartons: "Cartons",
+  eggs: "Eggs in stock",
   orders: "Orders",
   purchasedKg: "Purchased kg",
   revenueCop: "Revenue",
   spendCop: "Feed spend",
   usedKg: "Used kg",
+};
+
+const eggCategoryColors: Record<EggSizeCategory, string> = {
+  C: "#c9a167",
+  B: "#d8aa56",
+  A: "#e7bf68",
+  AA: "#8e9f70",
+  AAA: "#5f8660",
+  Jumbo: "#315f42",
 };
 
 function formatChartTooltipValue(value: unknown, name: unknown) {
@@ -723,7 +735,7 @@ function DashboardSection({
           </div>
         </Card>
 
-        <Card title="Birds in coop" icon={Bird}>
+        <Card title="Birds in flock" icon={Bird}>
           <div className="grid gap-3">
             {state.coops.map((coop) => (
               <div key={coop.id} className="soft-panel flex items-center gap-4 p-4">
@@ -814,6 +826,10 @@ function EggLoggingSection({
   const cartons = Math.floor(goodEggs / 30);
   const loose = goodEggs % 30;
   const categorizedEggs = getEggSizeTotal(form.sizeBreakdown);
+  const stockByCategory = useMemo(
+    () => getEggStockByCategoryData(state),
+    [state],
+  );
 
   function updateSizeBreakdown(category: EggSizeCategory, value: number) {
     setForm({
@@ -872,7 +888,7 @@ function EggLoggingSection({
           </Field>
           <LargeNumberField
             label="Eggs collected"
-            hint="One coop"
+            hint="Single flock"
             value={form.coop1Eggs}
             onChange={(value) => setForm({ ...form, coop1Eggs: value })}
           />
@@ -912,6 +928,83 @@ function EggLoggingSection({
             Save egg log
           </button>
         </form>
+      </Card>
+
+      <Card title="Eggs in stock" icon={BarChart3}>
+        <div className="grid gap-3">
+          <div className="soft-panel grid grid-cols-2 gap-2 p-3 text-center">
+            <MiniTotal
+              label="Available"
+              value={stockByCategory.eggsAvailable}
+            />
+            <MiniTotal
+              label="Cartons"
+              value={Math.floor(stockByCategory.eggsAvailable / 30)}
+            />
+            <MiniTotal
+              label="Categorized"
+              value={stockByCategory.categorizedAvailable}
+            />
+            <MiniTotal
+              label="Loose"
+              value={stockByCategory.eggsAvailable % 30}
+            />
+          </div>
+
+          {stockByCategory.uncategorizedAvailable ? (
+            <p className="soft-panel p-3 text-sm font-bold text-[var(--muted)]">
+              {formatNumber(stockByCategory.uncategorizedAvailable)} available eggs
+              do not have a size category yet.
+            </p>
+          ) : null}
+
+          <div className="h-64">
+            {stockByCategory.hasCategoryData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stockByCategory.rows}>
+                  <CartesianGrid strokeDasharray="3 8" stroke="var(--line)" />
+                  <XAxis
+                    dataKey="category"
+                    tick={{ fontSize: 11, fill: "var(--muted)" }}
+                  />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                  <Tooltip formatter={formatChartTooltipValue} />
+                  <Bar dataKey="eggs" radius={[12, 12, 0, 0]}>
+                    {stockByCategory.rows.map((row) => (
+                      <Cell
+                        key={row.category}
+                        fill={eggCategoryColors[row.category]}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ChartEmpty label="Log egg size categories to build this chart." />
+            )}
+          </div>
+
+          <div className="grid gap-2 text-sm font-bold text-[var(--muted)]">
+            {stockByCategory.rows.map((row) => (
+              <div
+                key={row.category}
+                className="soft-panel flex items-center justify-between gap-3 p-3"
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-3 w-3 rounded-full"
+                    style={{ backgroundColor: eggCategoryColors[row.category] }}
+                  />
+                  {row.category}
+                </span>
+                <span>
+                  {formatNumber(row.eggs)} eggs
+                  {row.eggs ? ` - ${row.cartons} cartons, ${row.loose} loose` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </Card>
 
       <Card title="Recent egg logs" icon={ClipboardList}>
@@ -1191,12 +1284,12 @@ function CoopSection({
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="Coop management" icon={Bird}>
+      <Card title="Flock management" icon={Bird}>
         <div className="grid gap-4">
           {state.coops.map((coop) => (
             <div key={coop.id} className="rounded-3xl bg-[#f8f5ed] p-4">
               <div className="grid gap-3">
-                <Field label="Coop name">
+                <Field label="Flock name">
                   <input
                     className="input"
                     value={coop.name}
@@ -1232,7 +1325,7 @@ function CoopSection({
         <Card title="Deaths, removals, new birds" icon={ClipboardList}>
           <form className="grid gap-4" onSubmit={recordBirdAction}>
             <CoopSelect
-              label="Coop"
+              label="Farm area"
               coops={state.coops}
               value={birdAction.coopId}
               onChange={(coopId) => setBirdAction({ ...birdAction, coopId })}
@@ -1702,7 +1795,7 @@ function HealthSection({
             />
           </Field>
           <CoopSelect
-            label="Coop"
+            label="Farm area"
             coops={state.coops}
             value={health.coopId}
             onChange={(coopId) => setHealth({ ...health, coopId })}
@@ -1775,7 +1868,7 @@ function HealthSection({
               />
             </Field>
             <CoopSelect
-              label="Coop"
+              label="Farm area"
               coops={[{ id: "", name: "Whole farm", capacity: 0, hens: 0, chicks: 0 }, ...state.coops]}
               value={task.coopId}
               onChange={(coopId) => setTask({ ...task, coopId })}
