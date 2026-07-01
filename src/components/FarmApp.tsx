@@ -740,10 +740,14 @@ function DashboardSection({
             {state.coops.map((coop) => (
               <div key={coop.id} className="soft-panel flex items-center gap-4 p-4">
                 <ProgressRing
-                  value={Math.min(
-                    ((coop.hens + coop.chicks) / coop.capacity) * 100,
-                    100,
-                  )}
+                  value={
+                    coop.capacity
+                      ? Math.min(
+                          ((coop.hens + coop.chicks) / coop.capacity) * 100,
+                          100,
+                        )
+                      : 0
+                  }
                   label={`${coop.hens + coop.chicks}`}
                   tone={coop.id === "coop-1" ? "moss" : "clay"}
                 />
