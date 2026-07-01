@@ -1,9 +1,7 @@
 import { migrateFarmState } from "./farm-state-migration";
 import type { FarmState, InvestmentItem } from "./types";
 
-
 const realInvestments: InvestmentItem[] = [
-  // === GALPON CONSTRUCCION ===
   { id: "inv-galp-1", category: "galpon_construccion", subcategory: "Obra gris", description: "Bolsas de cemento", quantity: 10, unit: "bolsas", unitPrice: 32000, totalPrice: 320000 },
   { id: "inv-galp-2", category: "galpon_construccion", subcategory: "Obra gris", description: "Materiales", quantity: 1, unit: "lote", unitPrice: 8100, totalPrice: 8100 },
   { id: "inv-galp-3", category: "galpon_construccion", subcategory: "Transporte", description: "Transporte de material", quantity: 1, unit: "viaje", unitPrice: 200000, totalPrice: 200000 },
@@ -17,7 +15,6 @@ const realInvestments: InvestmentItem[] = [
   { id: "inv-galp-11", category: "galpon_construccion", subcategory: "Materiales", description: "Rollo de malla x 30mts galvanizada", quantity: 1, unit: "rollo", unitPrice: 1071000, totalPrice: 1071000 },
   { id: "inv-galp-12", category: "galpon_construccion", subcategory: "Mano de obra", description: "Transporte personal de ayuda", quantity: 1, unit: "viaje", unitPrice: 100000, totalPrice: 100000 },
 
-  // === GALPON MATERIALES OLGA ===
   { id: "inv-mat-olga-1", category: "galpon_materiales_olga", subcategory: "OLGA", description: "Tubos 3 x 1-1/12 n C18", quantity: 10, unit: "tubos", unitPrice: 64000, totalPrice: 640000, supplier: "OLGA" },
   { id: "inv-mat-olga-2", category: "galpon_materiales_olga", subcategory: "OLGA", description: "Tubos 2 1/2 galv C16", quantity: 2, unit: "tubos", unitPrice: 114000, totalPrice: 228000, supplier: "OLGA" },
   { id: "inv-mat-olga-3", category: "galpon_materiales_olga", subcategory: "OLGA", description: "Tubos 2 galv C16", quantity: 3, unit: "tubos", unitPrice: 92000, totalPrice: 276000, supplier: "OLGA" },
@@ -27,7 +24,6 @@ const realInvestments: InvestmentItem[] = [
   { id: "inv-mat-olga-7", category: "galpon_materiales_olga", subcategory: "OLGA", description: "Varilla 1/2 entor", quantity: 2, unit: "varillas", unitPrice: 35700, totalPrice: 71400, supplier: "OLGA" },
   { id: "inv-mat-olga-8", category: "galpon_materiales_olga", subcategory: "OLGA", description: "Kilo de soldadura adicional", quantity: 2, unit: "kilos", unitPrice: 10000, totalPrice: 20000, supplier: "OLGA" },
 
-  // === GALPON MATERIALES HOMECENTER ===
   { id: "inv-mat-home-1", category: "galpon_materiales_homecenter", subcategory: "HOMECENTER", description: "Set x10 Tornillos", quantity: 4, unit: "sets", unitPrice: 22900, totalPrice: 91600, supplier: "Homecenter" },
   { id: "inv-mat-home-2", category: "galpon_materiales_homecenter", subcategory: "HOMECENTER", description: "Tee 1/2 x10", quantity: 1, unit: "unidades", unitPrice: 5400, totalPrice: 5400, supplier: "Homecenter" },
   { id: "inv-mat-home-3", category: "galpon_materiales_homecenter", subcategory: "HOMECENTER", description: "Codo 1/2 x10", quantity: 3, unit: "unidades", unitPrice: 3600, totalPrice: 10800, supplier: "Homecenter" },
@@ -35,7 +31,6 @@ const realInvestments: InvestmentItem[] = [
   { id: "inv-mat-home-5", category: "galpon_materiales_homecenter", subcategory: "HOMECENTER", description: "Teja Roja N10 Trapezoidal 3.05X0.94 M Polipropil Koyo", quantity: 8, unit: "tejas", unitPrice: 43400, totalPrice: 347200, supplier: "Homecenter" },
   { id: "inv-mat-home-6", category: "galpon_materiales_homecenter", subcategory: "HOMECENTER", description: "Tubos 1/2 3mts", quantity: 20, unit: "tubos", unitPrice: 5695, totalPrice: 113900, supplier: "Homecenter" },
 
-  // === GALPON MATERIALES LA ROCA ===
   { id: "inv-mat-roca-1", category: "galpon_materiales_laroca", subcategory: "LA ROCA", description: "Listones 2x2 amargo", quantity: 8, unit: "listones", unitPrice: 38000, totalPrice: 304000, supplier: "La Roca" },
   { id: "inv-mat-roca-2", category: "galpon_materiales_laroca", subcategory: "LA ROCA", description: "Bisagras 3x3 omega x3", quantity: 2, unit: "sets", unitPrice: 11000, totalPrice: 22000, supplier: "La Roca" },
   { id: "inv-mat-roca-3", category: "galpon_materiales_laroca", subcategory: "LA ROCA", description: "Galon anticorrosivo (1/2)", quantity: 1, unit: "galon", unitPrice: 34000, totalPrice: 34000, supplier: "La Roca" },
@@ -66,11 +61,9 @@ const realInvestments: InvestmentItem[] = [
   { id: "inv-mat-roca-28", category: "galpon_materiales_laroca", subcategory: "LA ROCA - adicional", description: "Domicilio", quantity: 1, unit: "viaje", unitPrice: 17000, totalPrice: 17000, supplier: "La Roca" },
   { id: "inv-mat-roca-29", category: "galpon_materiales_laroca", subcategory: "LA ROCA - adicional", description: "Bisagra", quantity: 4, unit: "unidades", unitPrice: 3500, totalPrice: 14000, supplier: "La Roca" },
 
-  // === GALLINAS ===
   { id: "inv-gall-1", category: "gallinas_compra", subcategory: "Compra inicial", description: "Gallinas ponedoras", quantity: 400, unit: "gallinas", unitPrice: 5500, totalPrice: 2200000 },
   { id: "inv-gall-2", category: "gallinas_compra", subcategory: "Compra inicial", description: "Cuidandero", quantity: 1, unit: "mes", unitPrice: 850000, totalPrice: 850000 },
 
-  // === ALIMENTO ===
   { id: "inv-food-1", category: "gallinas_alimento", subcategory: "Pollito inicio", description: "Pollito inicio (11 feb-11 mar)", quantity: 6, unit: "bultos", unitPrice: 90500, totalPrice: 543000 },
   { id: "inv-food-2", category: "gallinas_alimento", subcategory: "Pollito inicio", description: "Pollito inicio (12mar-25 mar)", quantity: 7, unit: "bultos", unitPrice: 89300, totalPrice: 625100 },
   { id: "inv-food-3", category: "gallinas_alimento", subcategory: "Pollita inicio", description: "Pollita inicio (26 mar-7 abr)", quantity: 5, unit: "bultos", unitPrice: 84500, totalPrice: 422500 },
@@ -81,7 +74,6 @@ const realInvestments: InvestmentItem[] = [
   { id: "inv-food-8", category: "gallinas_alimento", subcategory: "Prepico", description: "Prepico 100 Dorado (19 junio - 20 junio)", quantity: 1, unit: "bulto", unitPrice: 79800, totalPrice: 79800 },
   { id: "inv-food-9", category: "gallinas_alimento", subcategory: "Prepico", description: "Prepico 100 Dorado (23 junio -)", quantity: 15, unit: "bultos", unitPrice: 79800, totalPrice: 1197000 },
 
-  // === MEDICINA & VACUNAS ===
   { id: "inv-med-1", category: "gallinas_medicina_vacunas", subcategory: "Medicamentos", description: "Compleland B12 oral 1L", quantity: 1, unit: "litro", unitPrice: 42700, totalPrice: 42700 },
   { id: "inv-med-2", category: "gallinas_medicina_vacunas", subcategory: "Medicamentos", description: "Yodo", quantity: 1, unit: "litro", unitPrice: 46300, totalPrice: 46300 },
   { id: "inv-med-3", category: "gallinas_medicina_vacunas", subcategory: "Medicamentos", description: "Doxiciclina y Ambroxol sobre", quantity: 100, unit: "sobres", unitPrice: 2900, totalPrice: 290000 },
@@ -92,7 +84,6 @@ const realInvestments: InvestmentItem[] = [
   { id: "inv-med-8", category: "gallinas_medicina_vacunas", subcategory: "Vacunas", description: "Viruela Aviar (3 mayo)", quantity: 1, unit: "dosis", unitPrice: 38800, totalPrice: 38800 },
   { id: "inv-med-9", category: "gallinas_medicina_vacunas", subcategory: "Vacunas", description: "Vacuna Newcastle (7 junio)", quantity: 1, unit: "dosis", unitPrice: 23400, totalPrice: 23400 },
 
-  // === IMPLEMENTOS DEL GALPON ===
   { id: "inv-impl-1", category: "gallinas_implementos", subcategory: "Equipos", description: "Bebederos 8L manuales", quantity: 4, unit: "unidades", unitPrice: 23400, totalPrice: 93600 },
   { id: "inv-impl-2", category: "gallinas_implementos", subcategory: "Insumos", description: "Mts manila colombianita c3 (pita)", quantity: 40, unit: "mts", unitPrice: 600, totalPrice: 24000 },
   { id: "inv-impl-3", category: "gallinas_implementos", subcategory: "Insumos", description: "Rollo de tela verde 100mts", quantity: 1, unit: "rollo", unitPrice: 171100, totalPrice: 171100 },
@@ -110,7 +101,6 @@ const realInvestments: InvestmentItem[] = [
   { id: "inv-impl-15", category: "gallinas_implementos", subcategory: "Equipos", description: "Bascula domestica", quantity: 1, unit: "unidad", unitPrice: 38000, totalPrice: 38000 },
   { id: "inv-impl-16", category: "gallinas_implementos", subcategory: "Equipos", description: "Ata facil", quantity: 1, unit: "unidad", unitPrice: 18700, totalPrice: 18700 },
 
-  // === GASTOS SEMANALES (PRE-PRODUCCION) ===
   { id: "inv-weekly-1", category: "gastos_semanales", subcategory: "Semana 17", description: "Gastos semanales (alimento + cuidador)", quantity: 1, unit: "semana", unitPrice: 498500, totalPrice: 498500, date: "2026-06-02" },
   { id: "inv-weekly-2", category: "gastos_semanales", subcategory: "Semana 18", description: "Gastos semanales (alimento + cuidador)", quantity: 1, unit: "semana", unitPrice: 445000, totalPrice: 445000, date: "2026-06-09" },
   { id: "inv-weekly-3", category: "gastos_semanales", subcategory: "Semana 19", description: "Gastos semanales (alimento + cuidador)", quantity: 1, unit: "semana", unitPrice: 528800, totalPrice: 528800, date: "2026-06-16" },
@@ -119,55 +109,44 @@ const realInvestments: InvestmentItem[] = [
 
 export function createFreshFarmState(): FarmState {
   return migrateFarmState({
-    coops: [
+    flockArrivals: [
       {
-        id: "coop-1",
-        name: "Coop 1",
-        capacity: 400,
-        hens: 378,
-        chicks: 0,
-        notes: "Gallinas en produccion",
-      },
-    ],
-    birdMovements: [
-      {
-        id: "move-init",
+        id: "arrival-1",
         date: "2026-02-11",
-        coopId: "coop-1",
-        type: "new_birds",
         quantity: 400,
+        breed: "Ponedoras",
         notes: "Llegada de 400 gallinas ponedoras",
       },
     ],
+    mortalityRecords: [],
     eggLogs: [
-      { id: "egg-2026-06-02", date: "2026-06-02", coop1Eggs: 0, coop2Eggs: 0, crackedEggs: 0, notes: "Semana 17 - Inicio produccion", synced: true, createdAt: "2026-06-02T00:00:00Z" },
-      { id: "egg-2026-06-03", date: "2026-06-03", coop1Eggs: 1, coop2Eggs: 0, crackedEggs: 0, notes: "Primer huevo!", synced: true, createdAt: "2026-06-03T00:00:00Z" },
-      { id: "egg-2026-06-04", date: "2026-06-04", coop1Eggs: 1, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-04T00:00:00Z" },
-      { id: "egg-2026-06-05", date: "2026-06-05", coop1Eggs: 0, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-05T00:00:00Z" },
-      { id: "egg-2026-06-06", date: "2026-06-06", coop1Eggs: 1, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-06T00:00:00Z" },
-      { id: "egg-2026-06-07", date: "2026-06-07", coop1Eggs: 1, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-07T00:00:00Z" },
-      { id: "egg-2026-06-08", date: "2026-06-08", coop1Eggs: 1, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-08T00:00:00Z" },
-      { id: "egg-2026-06-09", date: "2026-06-09", coop1Eggs: 2, coop2Eggs: 0, crackedEggs: 0, notes: "Semana 18", synced: true, createdAt: "2026-06-09T00:00:00Z" },
-      { id: "egg-2026-06-10", date: "2026-06-10", coop1Eggs: 4, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-10T00:00:00Z" },
-      { id: "egg-2026-06-11", date: "2026-06-11", coop1Eggs: 5, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-11T00:00:00Z" },
-      { id: "egg-2026-06-12", date: "2026-06-12", coop1Eggs: 7, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-12T00:00:00Z" },
-      { id: "egg-2026-06-13", date: "2026-06-13", coop1Eggs: 14, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-13T00:00:00Z" },
-      { id: "egg-2026-06-14", date: "2026-06-14", coop1Eggs: 24, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-14T00:00:00Z" },
-      { id: "egg-2026-06-15", date: "2026-06-15", coop1Eggs: 25, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-15T00:00:00Z" },
-      { id: "egg-2026-06-16", date: "2026-06-16", coop1Eggs: 36, coop2Eggs: 0, crackedEggs: 0, notes: "Semana 19", synced: true, createdAt: "2026-06-16T00:00:00Z" },
-      { id: "egg-2026-06-17", date: "2026-06-17", coop1Eggs: 31, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-17T00:00:00Z" },
-      { id: "egg-2026-06-18", date: "2026-06-18", coop1Eggs: 41, coop2Eggs: 0, crackedEggs: 0, notes: "", synced: true, createdAt: "2026-06-18T00:00:00Z" },
-      { id: "egg-2026-06-19", date: "2026-06-19", coop1Eggs: 50, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-19T00:00:00Z" },
-      { id: "egg-2026-06-20", date: "2026-06-20", coop1Eggs: 62, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-20T00:00:00Z" },
-      { id: "egg-2026-06-21", date: "2026-06-21", coop1Eggs: 70, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-21T00:00:00Z" },
-      { id: "egg-2026-06-22", date: "2026-06-22", coop1Eggs: 87, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-22T00:00:00Z" },
-      { id: "egg-2026-06-23", date: "2026-06-23", coop1Eggs: 102, coop2Eggs: 0, crackedEggs: 0, notes: "Semana 20", synced: true, createdAt: "2026-06-23T00:00:00Z" },
-      { id: "egg-2026-06-24", date: "2026-06-24", coop1Eggs: 108, coop2Eggs: 0, crackedEggs: 2, notes: "", synced: true, createdAt: "2026-06-24T00:00:00Z" },
-      { id: "egg-2026-06-25", date: "2026-06-25", coop1Eggs: 133, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-25T00:00:00Z" },
-      { id: "egg-2026-06-26", date: "2026-06-26", coop1Eggs: 157, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-26T00:00:00Z" },
-      { id: "egg-2026-06-27", date: "2026-06-27", coop1Eggs: 158, coop2Eggs: 0, crackedEggs: 4, notes: "", synced: true, createdAt: "2026-06-27T00:00:00Z" },
-      { id: "egg-2026-06-28", date: "2026-06-28", coop1Eggs: 182, coop2Eggs: 0, crackedEggs: 1, notes: "", synced: true, createdAt: "2026-06-28T00:00:00Z" },
-      { id: "egg-2026-06-29", date: "2026-06-29", coop1Eggs: 0, coop2Eggs: 0, crackedEggs: 0, notes: "No data", synced: true, createdAt: "2026-06-29T00:00:00Z" },
+      { id: "egg-2026-06-02", date: "2026-06-02", totalEggs: 0, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "Semana 17 - Inicio produccion", synced: true, createdAt: "2026-06-02T00:00:00Z" },
+      { id: "egg-2026-06-03", date: "2026-06-03", totalEggs: 1, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "Primer huevo!", synced: true, createdAt: "2026-06-03T00:00:00Z" },
+      { id: "egg-2026-06-04", date: "2026-06-04", totalEggs: 1, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-04T00:00:00Z" },
+      { id: "egg-2026-06-05", date: "2026-06-05", totalEggs: 0, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-05T00:00:00Z" },
+      { id: "egg-2026-06-06", date: "2026-06-06", totalEggs: 1, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-06T00:00:00Z" },
+      { id: "egg-2026-06-07", date: "2026-06-07", totalEggs: 1, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-07T00:00:00Z" },
+      { id: "egg-2026-06-08", date: "2026-06-08", totalEggs: 1, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-08T00:00:00Z" },
+      { id: "egg-2026-06-09", date: "2026-06-09", totalEggs: 2, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "Semana 18", synced: true, createdAt: "2026-06-09T00:00:00Z" },
+      { id: "egg-2026-06-10", date: "2026-06-10", totalEggs: 4, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-10T00:00:00Z" },
+      { id: "egg-2026-06-11", date: "2026-06-11", totalEggs: 5, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-11T00:00:00Z" },
+      { id: "egg-2026-06-12", date: "2026-06-12", totalEggs: 7, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-12T00:00:00Z" },
+      { id: "egg-2026-06-13", date: "2026-06-13", totalEggs: 14, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-13T00:00:00Z" },
+      { id: "egg-2026-06-14", date: "2026-06-14", totalEggs: 24, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-14T00:00:00Z" },
+      { id: "egg-2026-06-15", date: "2026-06-15", totalEggs: 25, crackedEggs: 0, feedConsumedKg: 35, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-15T00:00:00Z" },
+      { id: "egg-2026-06-16", date: "2026-06-16", totalEggs: 36, crackedEggs: 0, feedConsumedKg: 45, vitaminInWater: "", vitaminInFeed: "", notes: "Semana 19", synced: true, createdAt: "2026-06-16T00:00:00Z" },
+      { id: "egg-2026-06-17", date: "2026-06-17", totalEggs: 31, crackedEggs: 0, feedConsumedKg: 45, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-17T00:00:00Z" },
+      { id: "egg-2026-06-18", date: "2026-06-18", totalEggs: 41, crackedEggs: 0, feedConsumedKg: 45, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-18T00:00:00Z" },
+      { id: "egg-2026-06-19", date: "2026-06-19", totalEggs: 50, crackedEggs: 1, feedConsumedKg: 45, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-19T00:00:00Z" },
+      { id: "egg-2026-06-20", date: "2026-06-20", totalEggs: 62, crackedEggs: 1, feedConsumedKg: 45, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-20T00:00:00Z" },
+      { id: "egg-2026-06-21", date: "2026-06-21", totalEggs: 70, crackedEggs: 1, feedConsumedKg: 45, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-21T00:00:00Z" },
+      { id: "egg-2026-06-22", date: "2026-06-22", totalEggs: 87, crackedEggs: 1, feedConsumedKg: 45, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-22T00:00:00Z" },
+      { id: "egg-2026-06-23", date: "2026-06-23", totalEggs: 102, crackedEggs: 0, feedConsumedKg: 30, vitaminInWater: "", vitaminInFeed: "", notes: "Semana 20", synced: true, createdAt: "2026-06-23T00:00:00Z" },
+      { id: "egg-2026-06-24", date: "2026-06-24", totalEggs: 108, crackedEggs: 2, feedConsumedKg: 30, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-24T00:00:00Z" },
+      { id: "egg-2026-06-25", date: "2026-06-25", totalEggs: 133, crackedEggs: 1, feedConsumedKg: 30, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-25T00:00:00Z" },
+      { id: "egg-2026-06-26", date: "2026-06-26", totalEggs: 157, crackedEggs: 1, feedConsumedKg: 30, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-26T00:00:00Z" },
+      { id: "egg-2026-06-27", date: "2026-06-27", totalEggs: 158, crackedEggs: 4, feedConsumedKg: 30, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-27T00:00:00Z" },
+      { id: "egg-2026-06-28", date: "2026-06-28", totalEggs: 182, crackedEggs: 1, feedConsumedKg: 30, vitaminInWater: "", vitaminInFeed: "", notes: "", synced: true, createdAt: "2026-06-28T00:00:00Z" },
     ],
     sales: [
       { id: "sale-sem17-1", date: "2026-06-03", cartons: 1, pricePerCartonCop: 9000, customerName: "Cliente C" },
@@ -221,12 +200,7 @@ export function createFreshFarmState(): FarmState {
       { id: "feed-sem19", date: "2026-06-16", feedType: "Prepico 100 Dorado", quantityKg: 300, priceCop: 472800, supplier: "Semana 19" },
       { id: "feed-sem20", date: "2026-06-23", feedType: "Prepico 100 Dorado", quantityKg: 200, priceCop: 319200, supplier: "Semana 20" },
     ],
-    feedUsage: [
-      { id: "feed-use-17", date: "2026-06-02", quantityKg: 35, notes: "Semana 17" },
-      { id: "feed-use-18", date: "2026-06-09", quantityKg: 35, notes: "Semana 18" },
-      { id: "feed-use-19", date: "2026-06-16", quantityKg: 45, notes: "Semana 19" },
-      { id: "feed-use-20", date: "2026-06-23", quantityKg: 30, notes: "Semana 20" },
-    ],
+    feedUsage: [],
     expenses: [
       { id: "exp-anaqueles", date: "2026-06-02", category: "maintenance", amountCop: 53500, description: "Anaquel para huevos" },
     ],
@@ -250,7 +224,7 @@ export function createFreshFarmState(): FarmState {
     ],
     investments: realInvestments,
     offlineQueue: [],
-  });
+  } as any);
 }
 
 export function createDemoFarmState(): FarmState {

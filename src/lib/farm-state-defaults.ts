@@ -3,8 +3,8 @@ import type { FarmState } from "./types";
 
 export function createFreshFarmState(): FarmState {
   return migrateFarmState({
-    coops: [],
-    birdMovements: [],
+    flockArrivals: [],
+    mortalityRecords: [],
     eggLogs: [],
     sales: [],
     feedPurchases: [],
@@ -15,5 +15,5 @@ export function createFreshFarmState(): FarmState {
     maintenanceTasks: [],
     investments: [],
     offlineQueue: [],
-  });
+  } as any);
 }
