@@ -57,6 +57,7 @@ import {
   formatCop,
   formatNumber,
   getEggChartData,
+  getEggStockByCategoryData,
   getFeedChartData,
   getReportRows,
   getSalesChartData,
@@ -197,6 +198,7 @@ const inventoryCategories: InventoryItem["category"][] = [
 const adminChartMetricLabels: Record<string, string> = {
   cartons: "Cartons",
   cartonsSold: "Cartons sold",
+  eggs: "Eggs in stock",
   expensesCop: "Expenses",
   goodEggs: "Good eggs",
   purchasedKg: "Purchased kg",
@@ -204,6 +206,15 @@ const adminChartMetricLabels: Record<string, string> = {
   salesCop: "Sales",
   spendCop: "Feed spend",
   usedKg: "Used kg",
+};
+
+const eggCategoryColors: Record<EggSizeCategory, string> = {
+  C: "#c9a167",
+  B: "#d8aa56",
+  A: "#e7bf68",
+  AA: "#8e9f70",
+  AAA: "#5f8660",
+  Jumbo: "#315f42",
 };
 
 function formatAdminChartTooltipValue(value: unknown, name: unknown) {
@@ -1728,6 +1739,10 @@ function EggsSection({
   const cartons = Math.floor(goodEggs / 30);
   const looseEggs = goodEggs % 30;
   const categorizedEggs = getEggSizeTotal(form.sizeBreakdown);
+  const stockByCategory = useMemo(
+    () => getEggStockByCategoryData(state),
+    [state],
+  );
 
   function updateSizeBreakdown(category: EggSizeCategory, value: number) {
     setForm({
@@ -2060,6 +2075,66 @@ function EggsSection({
               AAA, Jumbo, and Notes. Andrea tabs can stay named PRODUCCION,
               VENTA, GASTOS, GALPON, and GALLINAS.
             </p>
+          </div>
+        </div>
+
+        <div className="admin-stock-chart-panel">
+          <div className="admin-panel-header compact">
+            <div>
+              <p className="admin-eyebrow">Current stock</p>
+              <h3>Eggs by category</h3>
+            </div>
+            <div className="admin-stock-total">
+              <strong>{formatNumber(stockByCategory.eggsAvailable)}</strong>
+              <span>eggs available</span>
+            </div>
+          </div>
+
+          <div className="admin-summary-strip">
+            <span>{formatNumber(stockByCategory.categorizedAvailable)} categorized</span>
+            <span>{Math.floor(stockByCategory.eggsAvailable / 30)} cartons</span>
+            <span>{stockByCategory.eggsAvailable % 30} loose</span>
+            {stockByCategory.uncategorizedAvailable ? (
+              <span>
+                {formatNumber(stockByCategory.uncategorizedAvailable)} uncategorized
+              </span>
+            ) : null}
+          </div>
+
+          <div className="admin-chart stock">
+            {stockByCategory.hasCategoryData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stockByCategory.rows}>
+                  <CartesianGrid strokeDasharray="3 7" stroke="#d7ddd5" />
+                  <XAxis
+                    dataKey="category"
+                    tick={{ fontSize: 12, fill: "#66736b" }}
+                  />
+                  <YAxis tick={{ fontSize: 12, fill: "#66736b" }} />
+                  <Tooltip formatter={formatAdminChartTooltipValue} />
+                  <Bar dataKey="eggs" radius={[6, 6, 0, 0]}>
+                    {stockByCategory.rows.map((row) => (
+                      <Cell
+                        key={row.category}
+                        fill={eggCategoryColors[row.category]}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <AdminChartEmpty label="Import or log egg size categories to build this chart." />
+            )}
+          </div>
+
+          <div className="admin-stock-legend">
+            {stockByCategory.rows.map((row) => (
+              <span key={row.category}>
+                <i style={{ backgroundColor: eggCategoryColors[row.category] }} />
+                {row.category}: {formatNumber(row.eggs)} eggs
+                {row.eggs ? ` (${row.cartons} cartons, ${row.loose} loose)` : ""}
+              </span>
+            ))}
           </div>
         </div>
 

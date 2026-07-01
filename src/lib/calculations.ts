@@ -131,6 +131,74 @@ export function getEggChartData(state: FarmState) {
   }));
 }
 
+export function getEggStockByCategoryData(state: FarmState) {
+  const categoryTotals = state.eggLogs.reduce(
+    (totals, log) => {
+      const breakdown = normalizeEggSizeBreakdown(log.sizeBreakdown);
+      EGG_SIZE_ORDER.forEach((category) => {
+        totals[category] += breakdown[category];
+      });
+      return totals;
+    },
+    normalizeEggSizeBreakdown(),
+  );
+  const goodEggsCollected = state.eggLogs.reduce(
+    (sum, log) => sum + getGoodEggs(log),
+    0,
+  );
+  const eggsSold = state.sales.reduce(
+    (sum, sale) => sum + sale.cartons * CARTON_SIZE,
+    0,
+  );
+  const eggsAvailable = Math.max(goodEggsCollected - eggsSold, 0);
+  const categorizedCollected = getEggSizeTotal(categoryTotals);
+  const stockRatio = goodEggsCollected ? eggsAvailable / goodEggsCollected : 0;
+  const categorizedAvailable = Math.min(
+    eggsAvailable,
+    Math.round(categorizedCollected * stockRatio),
+  );
+  const rawCategoryRows = EGG_SIZE_ORDER.map((category) => {
+    const rawEggs = categoryTotals[category] * stockRatio;
+
+    return {
+      category,
+      rawEggs,
+      eggs: Math.floor(rawEggs),
+      remainder: rawEggs % 1,
+    };
+  });
+  let eggsToDistribute =
+    categorizedAvailable -
+    rawCategoryRows.reduce((sum, row) => sum + row.eggs, 0);
+
+  [...rawCategoryRows]
+    .sort((a, b) => b.remainder - a.remainder)
+    .forEach((row) => {
+      if (eggsToDistribute > 0) {
+        row.eggs += 1;
+        eggsToDistribute -= 1;
+      }
+    });
+
+  const rows = rawCategoryRows.map(({ category, eggs }) => ({
+    category,
+    eggs,
+    cartons: Math.floor(eggs / CARTON_SIZE),
+    loose: eggs % CARTON_SIZE,
+    percentage: categorizedAvailable
+      ? Math.round((eggs / categorizedAvailable) * 100)
+      : 0,
+  }));
+
+  return {
+    rows,
+    eggsAvailable,
+    categorizedAvailable,
+    uncategorizedAvailable: Math.max(eggsAvailable - categorizedAvailable, 0),
+    hasCategoryData: categorizedCollected > 0,
+  };
+}
+
 export function getSalesChartData(state: FarmState) {
   const totalsByDate = new Map<
     string,

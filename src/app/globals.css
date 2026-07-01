@@ -937,6 +937,77 @@ textarea.input {
   line-height: 1.35;
 }
 
+.admin-panel-header.compact {
+  margin-top: 16px;
+}
+
+.admin-panel-header.compact h3 {
+  margin: 0;
+  color: #253229;
+  font-size: 20px;
+  line-height: 1.15;
+  font-weight: 950;
+}
+
+.admin-stock-total {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  color: #315f42;
+  text-align: right;
+}
+
+.admin-stock-total strong {
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.admin-stock-total span {
+  color: #687469;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-stock-chart-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-chart.stock {
+  height: 230px;
+  background: #fbfcf9;
+}
+
+.admin-stock-legend {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-stock-legend span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #edf1ec;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px 9px;
+  color: #4f5d53;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.admin-stock-legend i {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
 .admin-import-summary {
   display: grid;
   gap: 12px;
@@ -1051,7 +1122,8 @@ textarea.input {
   .admin-metrics,
   .admin-report-grid,
   .admin-graph-options,
-  .admin-insights {
+  .admin-insights,
+  .admin-stock-legend {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1112,8 +1184,18 @@ textarea.input {
   .admin-report-grid,
   .admin-import-layout,
   .admin-insights,
+  .admin-stock-legend,
   .admin-edit-row {
     grid-template-columns: 1fr;
+  }
+
+  .admin-panel-header.compact {
+    align-items: flex-start;
+  }
+
+  .admin-stock-total {
+    justify-items: start;
+    text-align: left;
   }
 
   .admin-progress-row {
