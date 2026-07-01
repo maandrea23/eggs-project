@@ -848,7 +848,16 @@ function parseAndreaSalesRows(ventaRows: SpreadsheetCell[][]): FarmState["sales"
       return [];
     }
 
-    const eggCount = parseSpreadsheetDecimal(getCell(row, 4));
+    const sizeBreakdown = normalizeEggSizeBreakdown({
+      C: parseSpreadsheetNumber(getCell(row, 6)),
+      B: parseSpreadsheetNumber(getCell(row, 7)),
+      A: parseSpreadsheetNumber(getCell(row, 8)),
+      AA: parseSpreadsheetNumber(getCell(row, 9)),
+      AAA: parseSpreadsheetNumber(getCell(row, 10)),
+      Jumbo: parseSpreadsheetNumber(getCell(row, 11)),
+    });
+    const sizeTotal = getEggSizeTotal(sizeBreakdown);
+    const eggCount = sizeTotal || parseSpreadsheetDecimal(getCell(row, 4));
     const totalCop = parseSpreadsheetDecimal(getCell(row, 18));
 
     if (eggCount <= 0 || totalCop <= 0) {
@@ -858,14 +867,14 @@ function parseAndreaSalesRows(ventaRows: SpreadsheetCell[][]): FarmState["sales"
     const cartons = eggCount / 30;
     const pricePerCartonCop = Math.round(totalCop / cartons);
     const sizeSummary = [
-      ["C", getCell(row, 6)],
-      ["B", getCell(row, 7)],
-      ["A", getCell(row, 8)],
-      ["AA", getCell(row, 9)],
-      ["AAA", getCell(row, 10)],
-      ["Jumbo/Rotos", getCell(row, 11)],
+      ["C", sizeBreakdown.C],
+      ["B", sizeBreakdown.B],
+      ["A", sizeBreakdown.A],
+      ["AA", sizeBreakdown.AA],
+      ["AAA", sizeBreakdown.AAA],
+      ["Jumbo/Rotos", sizeBreakdown.Jumbo],
     ]
-      .map(([label, value]) => `${label}: ${parseSpreadsheetNumber(value)}`)
+      .map(([label, value]) => `${label}: ${value}`)
       .join(", ");
 
     return [
