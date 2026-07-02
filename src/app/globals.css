@@ -1573,6 +1573,12 @@ textarea.input {
   border-top: 1px solid var(--line);
 }
 
+.admin-theme-icon-button {
+  width: 42px;
+  justify-content: center;
+  padding: 0;
+}
+
 .admin-topbar {
   display: flex;
   align-items: flex-start;

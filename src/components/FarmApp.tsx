@@ -68,6 +68,8 @@ import {
 } from "@/lib/egg-classification";
 import { createFreshFarmState } from "@/lib/farm-state-defaults";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
+import type { ThemeMode } from "@/lib/theme-mode";
+import { useThemeMode } from "@/lib/use-theme-mode";
 import InvestmentSection from "@/components/InvestmentSection";
 import type {
   Expense,
@@ -92,12 +94,10 @@ type MoreSectionKey = "inventory" | "health" | "reports";
 
 type UserMode = "owner" | "operator";
 type OrganicTone = "moss" | "harvest" | "clay" | "plum";
-type ThemeMode = "daylight" | "nighttime";
 type DatabaseStatus = "checking" | "ready" | "local";
 
 const todayIso = () => format(new Date(), "yyyy-MM-dd");
 const nowIso = () => new Date().toISOString();
-const THEME_KEY = "brianna-egg-theme-mode";
 const makeId = (prefix: string) =>
   `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Date.now()}`;
 
@@ -184,21 +184,12 @@ export default function FarmApp() {
   const [authMessage, setAuthMessage] = useState("");
   const [online, setOnline] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [themeMode, setThemeMode] = useState<ThemeMode>("daylight");
+  const [themeMode, setThemeMode] = useThemeMode();
   const [databaseStatus, setDatabaseStatus] =
     useState<DatabaseStatus>("checking");
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
-      const savedTheme = window.localStorage.getItem(THEME_KEY);
-
-      if (savedTheme === "daylight" || savedTheme === "nighttime") {
-        setThemeMode(savedTheme);
-        document.documentElement.dataset.theme = savedTheme;
-      } else {
-        document.documentElement.dataset.theme = "daylight";
-      }
-
       const localState = loadFarmState();
       setState(localState);
       setLoaded(true);
@@ -245,15 +236,6 @@ export default function FarmApp() {
       saveFarmState(state);
     }
   }, [loaded, state]);
-
-  useEffect(() => {
-    if (!loaded) {
-      return;
-    }
-
-    document.documentElement.dataset.theme = themeMode;
-    window.localStorage.setItem(THEME_KEY, themeMode);
-  }, [loaded, themeMode]);
 
   const operatorTabs: TabKey[] = ["dashboard", "eggs", "expenses"];
   const allowedTabs = userMode === "operator" ? operatorTabs : tabs.map((t) => t.id);
@@ -2016,28 +1998,21 @@ function ThemeToggle({
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
 }) {
-  const options: { id: ThemeMode; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
-    { id: "daylight", label: "Day", icon: Sun },
-    { id: "nighttime", label: "Night", icon: Moon },
-  ];
+  const nextThemeMode = themeMode === "daylight" ? "nighttime" : "daylight";
+  const ToggleIcon = nextThemeMode === "nighttime" ? Moon : Sun;
+  const label = `Switch to ${nextThemeMode === "nighttime" ? "night" : "day"} mode`;
 
   return (
-    <div className="grid grid-cols-2 gap-1 rounded-full bg-[color-mix(in_srgb,var(--card),transparent_18%)] p-1 shadow-sm" aria-label="Theme mode">
-      {options.map((option) => {
-        const Icon = option.icon;
-        const selected = themeMode === option.id;
-        return (
-          <button key={option.id}
-            className={`flex h-10 items-center justify-center gap-1 rounded-full px-3 text-xs font-black ${
-              selected ? "bg-[var(--base-harvest)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted)]"
-            }`}
-            onClick={() => setThemeMode(option.id)} type="button" aria-pressed={selected}>
-            <Icon size={16} />
-            <span className="hidden sm:inline">{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <button
+      className="secondary-button grid h-12 w-12 place-items-center"
+      onClick={() => setThemeMode(nextThemeMode)}
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={themeMode === "nighttime"}
+    >
+      <ToggleIcon size={19} />
+    </button>
   );
 }
 

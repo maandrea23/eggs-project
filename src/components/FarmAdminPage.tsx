@@ -73,6 +73,7 @@ import {
 } from "@/lib/egg-classification";
 import { createFreshFarmState } from "@/lib/farm-state-defaults";
 import { loadFarmState, saveFarmState } from "@/lib/local-store";
+import { useThemeMode } from "@/lib/use-theme-mode";
 import InvestmentSection from "@/components/InvestmentSection";
 import type {
   Expense,
@@ -96,9 +97,6 @@ type AdminSection =
 type DatabaseStatus = "checking" | "ready" | "local";
 type ReportGraphType = "production" | "finance" | "feed";
 type ReportGraphStyle = "bar" | "line" | "area" | "pie";
-type ThemeMode = "daylight" | "nighttime";
-
-const THEME_KEY = "brianna-egg-theme-mode";
 
 type AdminNavItem = {
   id: AdminSection;
@@ -219,18 +217,12 @@ export default function FarmAdminPage() {
   const [state, setState] = useState<FarmState>(() => createFreshFarmState());
   const [loaded, setLoaded] = useState(false);
   const [activeSection, setActiveSection] = useState<AdminSection>("overview");
-  const [themeMode, setThemeMode] = useState<ThemeMode>("daylight");
+  const [themeMode, setThemeMode] = useThemeMode();
   const [databaseStatus, setDatabaseStatus] = useState<DatabaseStatus>("checking");
   const [authMessage, setAuthMessage] = useState("");
   const [online, setOnline] = useState(true);
 
   useEffect(() => {
-    const savedTheme = window.localStorage.getItem(THEME_KEY);
-    if (savedTheme === "daylight" || savedTheme === "nighttime") {
-      setThemeMode(savedTheme);
-      document.documentElement.dataset.theme = savedTheme;
-    }
-
     const localState = loadFarmState();
     setState(localState);
     setLoaded(true);
@@ -252,12 +244,6 @@ export default function FarmAdminPage() {
   useEffect(() => {
     if (loaded) saveFarmState(state);
   }, [loaded, state]);
-
-  useEffect(() => {
-    if (!loaded) return;
-    document.documentElement.dataset.theme = themeMode;
-    window.localStorage.setItem(THEME_KEY, themeMode);
-  }, [loaded, themeMode]);
 
   const metrics = useMemo(() => calculateFarmMetrics(state), [state]);
   const alerts = useMemo(() => buildAlerts(state), [state]);
@@ -312,9 +298,15 @@ export default function FarmAdminPage() {
           );
         })}
         <div className="admin-sidebar-footer">
-          <button className="admin-nav-item" onClick={() => setThemeMode(themeMode === "daylight" ? "nighttime" : "daylight")}>
+          <button
+            className="admin-nav-item admin-theme-icon-button"
+            onClick={() => setThemeMode(themeMode === "daylight" ? "nighttime" : "daylight")}
+            type="button"
+            title={`Switch to ${themeMode === "daylight" ? "night" : "day"} mode`}
+            aria-label={`Switch to ${themeMode === "daylight" ? "night" : "day"} mode`}
+            aria-pressed={themeMode === "nighttime"}
+          >
             {themeMode === "daylight" ? <Moon size={18} /> : <Sun size={18} />}
-            <span>{themeMode === "daylight" ? "Dark" : "Light"}</span>
           </button>
         </div>
       </nav>
