@@ -68,6 +68,7 @@ import {
   getDayName,
   getWeeklyData,
   getAllWeeks,
+  getWeeklyEggCostBreakdown,
   normalizeAccountingWeekSettings,
 } from "@/lib/calculations";
 import {
@@ -785,15 +786,30 @@ function SalesSection({
   chartData: ReturnType<typeof getSalesChartData>;
   updateState: (state: FarmState, message: string) => void;
 }) {
-  const [form, setForm] = useState({ date: todayIso(), cartons: 0, pricePerCartonCop: 19000, customerName: "" });
+  const [form, setForm] = useState<{
+    date: string;
+    cartons: number;
+    cartonType: EggSizeCategory;
+    pricePerCartonCop: number;
+    customerName: string;
+  }>({ date: todayIso(), cartons: 0, cartonType: "A", pricePerCartonCop: 19000, customerName: "" });
+  const selectedWeekId = getWeekId(form.date, state.accountingWeekSettings);
+  const selectedWeekCost = useMemo(
+    () => getWeeklyEggCostBreakdown(state, selectedWeekId),
+    [state, selectedWeekId],
+  );
+  const eggsSold = form.cartons * 30;
   const total = form.cartons * form.pricePerCartonCop;
+  const salePricePerEgg = form.pricePerCartonCop / 30;
+  const estimatedSaleCost = selectedWeekCost.costPerEggCop * eggsSold;
+  const estimatedSaleMargin = total - estimatedSaleCost;
   const costPerEggByWeek = useMemo(() => getCostPerEggByWeek(state), [state]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     const sale = { id: makeId("sale"), ...form };
     updateState({ ...state, sales: [...state.sales, sale] }, "Sale recorded.");
-    setForm({ date: todayIso(), cartons: 0, pricePerCartonCop: 19000, customerName: "" });
+    setForm({ date: todayIso(), cartons: 0, cartonType: "A", pricePerCartonCop: 19000, customerName: "" });
   }
 
   function removeSale(id: string) {
@@ -804,40 +820,96 @@ function SalesSection({
     <div className="admin-grid">
       <section className="admin-panel admin-span-4">
         <div className="admin-panel-header">
-          <div><p className="admin-eyebrow">Sales</p><h2>Record sale</h2></div>
+          <div><p className="admin-eyebrow">Sales</p><h2>Record egg sale</h2></div>
           <ShoppingCart size={20} />
         </div>
         <form className="admin-form" onSubmit={submit}>
           <AdminField label="Date"><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></AdminField>
           <AdminField label="Cartons sold"><input inputMode="numeric" value={form.cartons || ""} onChange={(e) => setForm({ ...form, cartons: parseNumber(e.target.value) })} /></AdminField>
           <AdminField label="Price per carton COP"><input inputMode="numeric" value={form.pricePerCartonCop || ""} onChange={(e) => setForm({ ...form, pricePerCartonCop: parseNumber(e.target.value) })} /></AdminField>
-          <AdminField label="Customer name"><input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} placeholder="e.g. Cliente A" /></AdminField>
-          <div className="admin-summary-strip"><span>Total {formatCop(total)}</span></div>
+          <AdminField label="Carton type for customer log">
+            <select value={form.cartonType} onChange={(e) => setForm({ ...form, cartonType: e.target.value as EggSizeCategory })}>
+              {EGG_SIZE_ORDER.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </AdminField>
+          <AdminField label="Customer name for customer log"><input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} placeholder="e.g. Cliente A" /></AdminField>
+          <div className="admin-summary-strip">
+            <span>Total {formatCop(total)}</span>
+            <span>{formatNumber(eggsSold)} eggs</span>
+            <span>Sold {formatCop(salePricePerEgg)}/egg</span>
+            <span>Cost {formatCop(selectedWeekCost.costPerEggCop)}/egg</span>
+            <span>Margin {formatCop(estimatedSaleMargin)}</span>
+          </div>
+          <div className="admin-summary-strip">
+            <span>Feed {formatCop(selectedWeekCost.feedCostCop)}</span>
+            <span>Expenses {formatCop(selectedWeekCost.operatingExpensesCop)}</span>
+            <span>Carton cost {formatCop(selectedWeekCost.costPerCartonCop)}</span>
+            <span>Sale cost {formatCop(estimatedSaleCost)}</span>
+          </div>
           <button className="admin-primary-button"><Save size={17} /> Record Sale</button>
         </form>
       </section>
 
       <section className="admin-panel admin-span-8">
         <div className="admin-panel-header">
-          <div><p className="admin-eyebrow">Revenue</p><h2>Sales list</h2></div>
+          <div><p className="admin-eyebrow">Revenue</p><h2>Egg sales list</h2></div>
           <Wallet size={20} />
         </div>
-        <AdminTable
-          headers={["Date", "Customer", "Cartons", "Price/carton", "Price/egg", "Total", "Cost/egg", ""]}
-          rows={state.sales.slice().reverse().map((sale) => {
+        <AdminRecordList
+          emptyLabel="No egg sales yet."
+          label="Recent sales"
+          items={state.sales.slice().reverse().map((sale) => {
             const week = getWeekId(sale.date, state.accountingWeekSettings);
             const cost = costPerEggByWeek[week];
-            return [
-              sale.date,
-              sale.customerName || "-",
-              sale.cartons,
-              formatCop(sale.pricePerCartonCop),
-              formatCop(sale.pricePerCartonCop / 30),
-              <strong key="t">{formatCop(sale.cartons * sale.pricePerCartonCop)}</strong>,
-              cost ? formatCop(cost) : "-",
-              <button key="del" className="admin-table-action" onClick={() => removeSale(sale.id)} title="Delete"><Trash2 size={15} /></button>,
-            ];
+            const saleEggs = sale.cartons * 30;
+            const saleTotal = sale.cartons * sale.pricePerCartonCop;
+            const estimatedCost = (cost ?? 0) * saleEggs;
+            return {
+              amount: formatCop(saleTotal),
+              chips: [
+                `${formatNumber(sale.cartons)} cartons`,
+                `${formatNumber(saleEggs)} eggs`,
+                `${formatCop(sale.pricePerCartonCop)}/carton`,
+                `${formatCop(sale.pricePerCartonCop / 30)}/egg sold`,
+                cost !== undefined ? `${formatCop(cost)}/egg cost` : "No cost yet",
+                cost !== undefined ? `${formatCop(saleTotal - estimatedCost)} margin` : "No margin yet",
+              ],
+              detail: `Week: ${week}`,
+              eyebrow: sale.date,
+              id: sale.id,
+              title: "Egg carton sale",
+              action: <button className="admin-table-action" onClick={() => removeSale(sale.id)} title="Delete"><Trash2 size={15} /></button>,
+            };
           })}
+        />
+      </section>
+
+      <section className="admin-panel admin-span-12">
+        <div className="admin-panel-header">
+          <div><p className="admin-eyebrow">Customers</p><h2>Customers who bought cartons</h2></div>
+          <ClipboardList size={20} />
+        </div>
+        <AdminRecordList
+          emptyLabel="No customer names recorded yet."
+          label="Buyer log"
+          items={state.sales
+            .filter((sale) => sale.customerName?.trim())
+            .slice()
+            .reverse()
+            .map((sale) => ({
+              amount: `${formatNumber(sale.cartons)} cartons`,
+              chips: [
+                `${formatNumber(sale.cartons * 30)} eggs`,
+                `${sale.cartonType || "-"} carton type`,
+                formatCop(sale.cartons * sale.pricePerCartonCop),
+              ],
+              detail: sale.date,
+              eyebrow: "Buyer",
+              id: sale.id,
+              title: sale.customerName || "Customer",
+            }))}
         />
       </section>
 

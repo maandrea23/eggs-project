@@ -51,6 +51,7 @@ export type Sale = {
   id: string;
   date: string;
   cartons: number;
+  cartonType?: EggSizeCategory;
   pricePerCartonCop: number;
   customerName?: string;
 };

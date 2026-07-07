@@ -109,6 +109,10 @@ export function migrateFarmState(state: FarmState): FarmState {
 
   return {
     ...withDefaults,
+    sales: (withDefaults.sales ?? []).map((sale) => ({
+      ...sale,
+      cartonType: (sale as any).cartonType ?? parseSaleCategory(sale.customerName),
+    })),
     eggLogs: (withDefaults.eggLogs ?? []).map((log) => {
       const existingBreakdown = normalizeEggSizeBreakdown(
         (log as any).sizeBreakdown,

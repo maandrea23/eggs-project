@@ -809,7 +809,18 @@ export function getAllWeeks(state: FarmState): string[] {
   return weeks;
 }
 
-export function getCostPerEggByWeek(state: FarmState): Record<string, number> {
+export function getWeeklyEggCostBreakdown(state: FarmState, weekId: string) {
+  const weekSettings = normalizeAccountingWeekSettings(state.accountingWeekSettings);
+  const { start: weekStart, end: weekEnd } = getWeekRangeFromId(
+    weekId,
+    weekSettings,
+  );
+  const isDateInSelectedWeek = (dateStr: string) =>
+    isWithinInterval(parseISO(dateStr), { start: weekStart, end: weekEnd });
+  const weeklyLogs = state.eggLogs.filter((log) =>
+    getWeekId(log.date, weekSettings) === weekId,
+  );
+  const goodEggs = weeklyLogs.reduce((sum, log) => sum + getGoodEggs(log), 0);
   const totalFeedPurchasedKg = state.feedPurchases.reduce(
     (sum, purchase) => sum + purchase.quantityKg,
     0,
@@ -821,37 +832,43 @@ export function getCostPerEggByWeek(state: FarmState): Record<string, number> {
   const averageFeedCostPerKg = totalFeedPurchasedKg
     ? totalFeedSpend / totalFeedPurchasedKg
     : 0;
-  const weeklyFeedUsage = new Map<string, number>();
-  const weeklyEggLogFeedUsage = new Map<string, number>();
-  const weeklyEggs = new Map<string, number>();
+  const explicitWeeklyFeedKg = state.feedUsage
+    .filter((usage) => isDateInSelectedWeek(usage.date))
+    .reduce((sum, usage) => sum + usage.quantityKg, 0);
+  const dailyLogFeedKg = weeklyLogs.reduce(
+    (sum, log) => sum + (log.feedConsumedKg || 0),
+    0,
+  );
+  const feedConsumedKg =
+    explicitWeeklyFeedKg > 0 ? explicitWeeklyFeedKg : dailyLogFeedKg;
+  const feedCostCop = feedConsumedKg * averageFeedCostPerKg;
+  const operatingExpensesCop = state.expenses
+    .filter((expense) => isDateInSelectedWeek(expense.date))
+    .reduce((sum, expense) => sum + expense.amountCop, 0);
+  const totalCostCop = feedCostCop + operatingExpensesCop;
+  const costPerEggCop = goodEggs ? totalCostCop / goodEggs : 0;
 
-  for (const usage of state.feedUsage) {
-    const weekId = getWeekId(usage.date, state.accountingWeekSettings);
-    weeklyFeedUsage.set(
-      weekId,
-      (weeklyFeedUsage.get(weekId) ?? 0) + usage.quantityKg,
-    );
-  }
+  return {
+    weekId,
+    weekStart,
+    weekEnd,
+    goodEggs,
+    feedConsumedKg,
+    feedCostCop,
+    operatingExpensesCop,
+    totalCostCop,
+    costPerEggCop,
+    costPerCartonCop: costPerEggCop * CARTON_SIZE,
+  };
+}
 
-  for (const log of state.eggLogs) {
-    const weekId = getWeekId(log.date, state.accountingWeekSettings);
-    weeklyEggs.set(weekId, (weeklyEggs.get(weekId) ?? 0) + getGoodEggs(log));
-    weeklyEggLogFeedUsage.set(
-      weekId,
-      (weeklyEggLogFeedUsage.get(weekId) ?? 0) + (log.feedConsumedKg || 0),
-    );
-  }
-
+export function getCostPerEggByWeek(state: FarmState): Record<string, number> {
   const result: Record<string, number> = {};
-  for (const weekId of weeklyEggs.keys()) {
-    const eggs = weeklyEggs.get(weekId) ?? 1;
-    const explicitWeeklyFeedKg = weeklyFeedUsage.get(weekId) ?? 0;
-    const dailyLogFeedKg = weeklyEggLogFeedUsage.get(weekId) ?? 0;
-    const feedKg = explicitWeeklyFeedKg > 0
-      ? explicitWeeklyFeedKg
-      : dailyLogFeedKg;
-    const feedCost = feedKg * averageFeedCostPerKg;
-    result[weekId] = feedCost / eggs;
+  for (const weekId of getAllWeeks(state)) {
+    const breakdown = getWeeklyEggCostBreakdown(state, weekId);
+    if (breakdown.goodEggs > 0) {
+      result[weekId] = breakdown.costPerEggCop;
+    }
   }
   return result;
 }

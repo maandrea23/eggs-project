@@ -62,6 +62,7 @@ import {
   getAllWeeks,
   getDayName,
   getCostPerEggByWeek,
+  getWeeklyEggCostBreakdown,
   normalizeAccountingWeekSettings,
 } from "@/lib/calculations";
 import {
@@ -1261,13 +1262,29 @@ function SalesSection({
   cartonsAvailable: number;
   chartData: ReturnType<typeof getSalesChartData>;
 }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    date: string;
+    cartons: number;
+    cartonType: EggSizeCategory;
+    pricePerCartonCop: number;
+    customerName: string;
+  }>({
     date: todayIso(),
     cartons: 0,
+    cartonType: "A",
     pricePerCartonCop: 19000,
     customerName: "",
   });
+  const selectedWeekId = getWeekId(form.date, state.accountingWeekSettings);
+  const selectedWeekCost = useMemo(
+    () => getWeeklyEggCostBreakdown(state, selectedWeekId),
+    [state, selectedWeekId],
+  );
+  const eggsSold = form.cartons * 30;
   const total = form.cartons * form.pricePerCartonCop;
+  const salePricePerEgg = form.pricePerCartonCop / 30;
+  const estimatedSaleCost = selectedWeekCost.costPerEggCop * eggsSold;
+  const estimatedSaleMargin = total - estimatedSaleCost;
   const costPerEggByWeek = useMemo(() => getCostPerEggByWeek(state), [state]);
 
   function submit(event: FormEvent) {
@@ -1281,6 +1298,7 @@ function SalesSection({
     setForm({
       date: todayIso(),
       cartons: 0,
+      cartonType: "A",
       pricePerCartonCop: 19000,
       customerName: "",
     });
@@ -1289,7 +1307,7 @@ function SalesSection({
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <Card title="Record sale" icon={ShoppingCart}>
+        <Card title="Record egg sale" icon={ShoppingCart}>
           <form className="grid gap-4" onSubmit={submit}>
             <div className="grid grid-cols-2 gap-3">
               <div className="soft-panel p-4">
@@ -1333,7 +1351,22 @@ function SalesSection({
               value={form.pricePerCartonCop}
               onChange={(value) => setForm({ ...form, pricePerCartonCop: value })}
             />
-            <Field label="Customer name">
+            <Field label="Carton type for customer log">
+              <select
+                className="input"
+                value={form.cartonType}
+                onChange={(event) =>
+                  setForm({ ...form, cartonType: event.target.value as EggSizeCategory })
+                }
+              >
+                {EGG_SIZE_ORDER.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Customer name for customer log">
               <input
                 className="input"
                 value={form.customerName}
@@ -1341,9 +1374,28 @@ function SalesSection({
                 placeholder="e.g. Cliente A"
               />
             </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="soft-panel p-4">
+                <p className="text-sm font-bold text-[var(--muted)]">Sale total</p>
+                <p className="text-3xl font-black">{formatCop(total)}</p>
+                <p className="text-sm font-semibold text-[var(--muted)]">
+                  {formatCop(salePricePerEgg)}/egg
+                </p>
+              </div>
+              <div className="soft-panel p-4">
+                <p className="text-sm font-bold text-[var(--muted)]">Weekly cost</p>
+                <p className="text-3xl font-black">{formatCop(selectedWeekCost.costPerEggCop)}/egg</p>
+                <p className="text-sm font-semibold text-[var(--muted)]">
+                  {formatCop(selectedWeekCost.costPerCartonCop)}/carton cost
+                </p>
+              </div>
+            </div>
             <div className="soft-panel p-4">
-              <p className="text-sm font-bold text-[var(--muted)]">Sale total</p>
-              <p className="text-3xl font-black">{formatCop(total)}</p>
+              <p className="text-sm font-bold text-[var(--muted)]">Estimated margin on this sale</p>
+              <p className="text-3xl font-black">{formatCop(estimatedSaleMargin)}</p>
+              <p className="text-sm font-semibold text-[var(--muted)]">
+                {formatNumber(eggsSold)} eggs sold • {formatCop(estimatedSaleCost)} estimated cost
+              </p>
             </div>
             <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
               <ReceiptText size={20} />
@@ -1352,7 +1404,7 @@ function SalesSection({
           </form>
         </Card>
 
-        <Card title="Recent sales" icon={Wallet}>
+        <Card title="Recent egg sales" icon={Wallet}>
           <div className="grid gap-3">
             {state.sales
               .slice()
@@ -1360,19 +1412,22 @@ function SalesSection({
               .map((sale) => {
                 const saleWeek = getWeekId(sale.date, state.accountingWeekSettings);
                 const costPerEgg = costPerEggByWeek[saleWeek];
+                const saleEggs = sale.cartons * 30;
+                const saleTotal = sale.cartons * sale.pricePerCartonCop;
+                const estimatedCost = (costPerEgg ?? 0) * saleEggs;
                 return (
                   <div key={sale.id} className="soft-panel p-4">
                     <div className="flex items-center justify-between">
                       <p className="font-black">
-                        {sale.cartons} cartons • {sale.date}
+                        {sale.cartons} cartons • {formatNumber(saleEggs)} eggs
                       </p>
-                      <p className="font-black">{formatCop(sale.cartons * sale.pricePerCartonCop)}</p>
+                      <p className="font-black">{formatCop(saleTotal)}</p>
                     </div>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      {sale.customerName || "No customer"} • {formatCop(sale.pricePerCartonCop)}/carton
+                      {sale.date} • Sold: {formatCop(sale.pricePerCartonCop / 30)}/egg
                       {costPerEgg !== undefined && (
                         <span className="ml-2">
-                          • Cost: {formatCop(costPerEgg)}/egg • Sold: {formatCop(sale.pricePerCartonCop / 30)}/egg
+                          • Cost: {formatCop(costPerEgg)}/egg • Margin: {formatCop(saleTotal - estimatedCost)}
                         </span>
                       )}
                     </p>
@@ -1383,20 +1438,44 @@ function SalesSection({
         </Card>
       </div>
 
-      <Card title="Sales by weight category" icon={BarChart3}>
+      <Card title="Egg sales and cost" icon={BarChart3}>
         <DataBoxList
           emptyLabel="No sales recorded"
           rows={state.sales.slice().reverse().map((sale) => ({
             id: sale.id,
             fields: [
               { label: "Date", value: sale.date },
-              { label: "Customer", value: sale.customerName || "-" },
-              { label: "Cartons", value: sale.cartons },
+              { label: "Cartons sold", value: sale.cartons },
+              { label: "Egg quantity", value: formatNumber(sale.cartons * 30) },
               { label: "Price/carton", value: formatCop(sale.pricePerCartonCop) },
-              { label: "Price/egg", value: formatCop(sale.pricePerCartonCop / 30) },
+              { label: "Sold/egg", value: formatCop(sale.pricePerCartonCop / 30) },
+              {
+                label: "Week cost/egg",
+                value: costPerEggByWeek[getWeekId(sale.date, state.accountingWeekSettings)] !== undefined
+                  ? formatCop(costPerEggByWeek[getWeekId(sale.date, state.accountingWeekSettings)])
+                  : "-",
+              },
               { label: "Total", value: formatCop(sale.cartons * sale.pricePerCartonCop) },
             ],
           }))}
+        />
+      </Card>
+
+      <Card title="Customer purchase log" icon={ClipboardList}>
+        <DataBoxList
+          emptyLabel="No customer names recorded"
+          rows={state.sales
+            .filter((sale) => sale.customerName?.trim())
+            .slice()
+            .reverse()
+            .map((sale) => ({
+              id: sale.id,
+              fields: [
+                { label: "Date", value: sale.date },
+                { label: "Customer", value: sale.customerName },
+                { label: "Carton type", value: sale.cartonType || "-" },
+              ],
+            }))}
         />
       </Card>
 
