@@ -605,6 +605,47 @@ function SyncBanner({
   );
 }
 
+function DataBoxList({
+  emptyLabel,
+  rows,
+}: {
+  emptyLabel?: string;
+  rows: Array<{
+    fields: Array<{ label: string; value: React.ReactNode }>;
+    id: string;
+  }>;
+}) {
+  if (!rows.length) {
+    return emptyLabel ? (
+      <div className="soft-panel p-4 text-center text-sm font-bold text-[var(--muted)]">
+        {emptyLabel}
+      </div>
+    ) : null;
+  }
+
+  return (
+    <div className="grid gap-3">
+      {rows.map((row) => (
+        <div
+          className="grid gap-3 rounded-[1.25rem] border border-[var(--line)] bg-[color-mix(in_srgb,var(--card-soft)_72%,var(--card))] p-4 sm:grid-cols-2"
+          key={row.id}
+        >
+          {row.fields.map((field) => (
+            <div className="min-w-0" key={field.label}>
+              <p className="text-[10px] font-black uppercase text-[var(--muted)]">
+                {field.label}
+              </p>
+              <div className="mt-1 text-sm font-extrabold leading-snug text-[var(--foreground)] break-words">
+                {field.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DashboardSection({
   state,
   metrics,
@@ -1105,36 +1146,26 @@ function EggLoggingSection({
                 </div>
               )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[500px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--line)] text-[var(--muted)]">
-                      <th className="py-2">Day</th>
-                      <th>Date</th>
-                      <th>Eggs</th>
-                      <th>Cracked</th>
-                      <th>Feed kg</th>
-                      <th>Vitamins</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {weeklyData.logs.map((log) => (
-                      <tr key={log.id} className="border-b border-[var(--line)]">
-                        <td className="py-2 font-bold capitalize">{getDayName(log.date)}</td>
-                        <td>{log.date}</td>
-                        <td>{log.totalEggs}</td>
-                        <td>{log.crackedEggs}</td>
-                        <td>{log.feedConsumedKg || "-"}</td>
-                        <td className="text-xs">
-                          {log.vitaminInWater && `W:${log.vitaminInWater} `}
-                          {log.vitaminInFeed && `F:${log.vitaminInFeed}`}
-                          {!log.vitaminInWater && !log.vitaminInFeed ? "-" : ""}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataBoxList
+                rows={weeklyData.logs.map((log) => ({
+                  id: log.id,
+                  fields: [
+                    { label: "Day", value: <span className="capitalize">{getDayName(log.date)}</span> },
+                    { label: "Date", value: log.date },
+                    { label: "Eggs", value: log.totalEggs },
+                    { label: "Cracked", value: log.crackedEggs },
+                    { label: "Feed kg", value: log.feedConsumedKg || "-" },
+                    {
+                      label: "Vitamins",
+                      value:
+                        [
+                          log.vitaminInWater ? `Water: ${log.vitaminInWater}` : "",
+                          log.vitaminInFeed ? `Feed: ${log.vitaminInFeed}` : "",
+                        ].filter(Boolean).join(" / ") || "-",
+                    },
+                  ],
+                }))}
+              />
 
               <div className="soft-panel p-4">
                 <p className="text-sm font-black text-[var(--olive)] mb-2">Summary</p>
@@ -1353,32 +1384,20 @@ function SalesSection({
       </div>
 
       <Card title="Sales by weight category" icon={BarChart3}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[500px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-[var(--line)] text-[var(--muted)]">
-                <th className="py-2">Date</th>
-                <th>Customer</th>
-                <th>Cartons</th>
-                <th>Price/carton</th>
-                <th>Price/egg</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.sales.slice().reverse().map((sale) => (
-                <tr key={sale.id} className="border-b border-[var(--line)]">
-                  <td className="py-2">{sale.date}</td>
-                  <td>{sale.customerName || "-"}</td>
-                  <td>{sale.cartons}</td>
-                  <td>{formatCop(sale.pricePerCartonCop)}</td>
-                  <td>{formatCop(sale.pricePerCartonCop / 30)}</td>
-                  <td className="font-bold">{formatCop(sale.cartons * sale.pricePerCartonCop)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataBoxList
+          emptyLabel="No sales recorded"
+          rows={state.sales.slice().reverse().map((sale) => ({
+            id: sale.id,
+            fields: [
+              { label: "Date", value: sale.date },
+              { label: "Customer", value: sale.customerName || "-" },
+              { label: "Cartons", value: sale.cartons },
+              { label: "Price/carton", value: formatCop(sale.pricePerCartonCop) },
+              { label: "Price/egg", value: formatCop(sale.pricePerCartonCop / 30) },
+              { label: "Total", value: formatCop(sale.cartons * sale.pricePerCartonCop) },
+            ],
+          }))}
+        />
       </Card>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -1535,59 +1554,33 @@ function FlockSection({
       </div>
 
       <Card title="Mortality log" icon={ClipboardList}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[400px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-[var(--line)] text-[var(--muted)]">
-                <th className="py-2">Date</th>
-                <th>Deaths</th>
-                <th>Cause</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.mortalityRecords.slice().reverse().map((m) => (
-                <tr key={m.id} className="border-b border-[var(--line)]">
-                  <td className="py-2">{m.date}</td>
-                  <td className="font-bold text-red-600">{m.deaths}</td>
-                  <td>{m.cause || "-"}</td>
-                  <td>{m.notes || "-"}</td>
-                </tr>
-              ))}
-              {state.mortalityRecords.length === 0 && (
-                <tr><td className="py-4 text-center text-[var(--muted)]" colSpan={4}>No mortality recorded</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataBoxList
+          emptyLabel="No mortality recorded"
+          rows={state.mortalityRecords.slice().reverse().map((m) => ({
+            id: m.id,
+            fields: [
+              { label: "Date", value: m.date },
+              { label: "Deaths", value: <span className="text-red-600">{m.deaths}</span> },
+              { label: "Cause", value: m.cause || "-" },
+              { label: "Notes", value: m.notes || "-" },
+            ],
+          }))}
+        />
       </Card>
 
       <Card title="Arrivals log" icon={Bird}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[400px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-[var(--line)] text-[var(--muted)]">
-                <th className="py-2">Date</th>
-                <th>Quantity</th>
-                <th>Breed</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.flockArrivals.slice().reverse().map((a) => (
-                <tr key={a.id} className="border-b border-[var(--line)]">
-                  <td className="py-2">{a.date}</td>
-                  <td className="font-bold">{a.quantity}</td>
-                  <td>{a.breed || "-"}</td>
-                  <td>{a.notes || "-"}</td>
-                </tr>
-              ))}
-              {state.flockArrivals.length === 0 && (
-                <tr><td className="py-4 text-center text-[var(--muted)]" colSpan={4}>No arrivals recorded</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataBoxList
+          emptyLabel="No arrivals recorded"
+          rows={state.flockArrivals.slice().reverse().map((a) => ({
+            id: a.id,
+            fields: [
+              { label: "Date", value: a.date },
+              { label: "Quantity", value: a.quantity },
+              { label: "Breed", value: a.breed || "-" },
+              { label: "Notes", value: a.notes || "-" },
+            ],
+          }))}
+        />
       </Card>
     </div>
   );
@@ -2039,34 +2032,20 @@ function ReportsSection({
       </Card>
 
       <Card title="Recent rows" icon={ClipboardList}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-[var(--line)] text-[var(--muted)]">
-                <th className="py-3">Date</th>
-                <th>Eggs collected</th>
-                <th>Good eggs</th>
-                <th>Feed kg</th>
-                <th>Sizes</th>
-                <th>Sold</th>
-                <th>Sales</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice().reverse().map((row) => (
-                <tr key={row.date} className="border-b border-[var(--line)]">
-                  <td className="py-3 font-bold">{row.date}</td>
-                  <td>{row.eggsCollected}</td>
-                  <td>{row.goodEggs}</td>
-                  <td>{row.feedKg || "-"}</td>
-                  <td>{row.sizeSummary}</td>
-                  <td>{row.cartonsSold}</td>
-                  <td>{formatCop(row.salesCop)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataBoxList
+          rows={rows.slice().reverse().map((row) => ({
+            id: row.date,
+            fields: [
+              { label: "Date", value: row.date },
+              { label: "Eggs collected", value: row.eggsCollected },
+              { label: "Good eggs", value: row.goodEggs },
+              { label: "Feed kg", value: row.feedKg || "-" },
+              { label: "Sizes", value: row.sizeSummary },
+              { label: "Sold", value: row.cartonsSold },
+              { label: "Sales", value: formatCop(row.salesCop) },
+            ],
+          }))}
+        />
       </Card>
     </div>
   );

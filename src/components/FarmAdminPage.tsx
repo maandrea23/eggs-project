@@ -206,14 +206,19 @@ function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
 function AdminTable({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) {
   return (
     <div className="admin-table-wrapper">
-      <table className="admin-table">
-        <thead><tr>{headers.map((h) => <th key={h}>{h}</th>)}</tr></thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i}>{row.map((cell, j) => <td key={j}>{cell}</td>)}</tr>
-          ))}
-        </tbody>
-      </table>
+      {rows.map((row, i) => (
+        <div className="admin-data-box" key={i}>
+          {row.map((cell, j) => {
+            const header = headers[j]?.trim();
+            return (
+              <div className={header ? "admin-data-field" : "admin-data-actions"} key={j}>
+                {header ? <span className="admin-data-label">{header}</span> : null}
+                <div className="admin-data-value">{cell}</div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
