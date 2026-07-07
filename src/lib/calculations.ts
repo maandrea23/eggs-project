@@ -810,26 +810,47 @@ export function getAllWeeks(state: FarmState): string[] {
 }
 
 export function getCostPerEggByWeek(state: FarmState): Record<string, number> {
-  const weeklyFeedSpend = new Map<string, number>();
+  const totalFeedPurchasedKg = state.feedPurchases.reduce(
+    (sum, purchase) => sum + purchase.quantityKg,
+    0,
+  );
+  const totalFeedSpend = state.feedPurchases.reduce(
+    (sum, purchase) => sum + purchase.priceCop,
+    0,
+  );
+  const averageFeedCostPerKg = totalFeedPurchasedKg
+    ? totalFeedSpend / totalFeedPurchasedKg
+    : 0;
+  const weeklyFeedUsage = new Map<string, number>();
+  const weeklyEggLogFeedUsage = new Map<string, number>();
   const weeklyEggs = new Map<string, number>();
 
-  for (const purchase of state.feedPurchases) {
-    const weekId = getWeekId(purchase.date, state.accountingWeekSettings);
-    weeklyFeedSpend.set(
+  for (const usage of state.feedUsage) {
+    const weekId = getWeekId(usage.date, state.accountingWeekSettings);
+    weeklyFeedUsage.set(
       weekId,
-      (weeklyFeedSpend.get(weekId) ?? 0) + purchase.priceCop,
+      (weeklyFeedUsage.get(weekId) ?? 0) + usage.quantityKg,
     );
   }
 
   for (const log of state.eggLogs) {
     const weekId = getWeekId(log.date, state.accountingWeekSettings);
     weeklyEggs.set(weekId, (weeklyEggs.get(weekId) ?? 0) + getGoodEggs(log));
+    weeklyEggLogFeedUsage.set(
+      weekId,
+      (weeklyEggLogFeedUsage.get(weekId) ?? 0) + (log.feedConsumedKg || 0),
+    );
   }
 
   const result: Record<string, number> = {};
   for (const weekId of weeklyEggs.keys()) {
     const eggs = weeklyEggs.get(weekId) ?? 1;
-    const feedCost = weeklyFeedSpend.get(weekId) ?? 0;
+    const explicitWeeklyFeedKg = weeklyFeedUsage.get(weekId) ?? 0;
+    const dailyLogFeedKg = weeklyEggLogFeedUsage.get(weekId) ?? 0;
+    const feedKg = explicitWeeklyFeedKg > 0
+      ? explicitWeeklyFeedKg
+      : dailyLogFeedKg;
+    const feedCost = feedKg * averageFeedCostPerKg;
     result[weekId] = feedCost / eggs;
   }
   return result;

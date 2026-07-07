@@ -63,6 +63,7 @@ import {
   getReportRows,
   getSalesChartData,
   getWeekId,
+  getWeekRangeFromId,
   getCostPerEggByWeek,
   getDayName,
   getWeeklyData,
@@ -965,8 +966,21 @@ function ExpensesSection({
   updateState: (state: FarmState, message: string) => void;
 }) {
   const [purchase, setPurchase] = useState({ date: todayIso(), feedType: "Layer pellet", quantityKg: 0, priceCop: 0, supplier: "" });
-  const [usage, setUsage] = useState({ date: todayIso(), quantityKg: 0, notes: "" });
+  const weekSettings = normalizeAccountingWeekSettings(state.accountingWeekSettings);
+  const allWeeks = useMemo(() => getAllWeeks(state), [state]);
+  const currentWeek = getWeekId(todayIso(), weekSettings);
+  const [usage, setUsage] = useState({ weekId: currentWeek, quantityKg: 0, notes: "" });
   const [expense, setExpense] = useState({ date: todayIso(), category: "maintenance" as Expense["category"], amountCop: 0, description: "" });
+  const selectedUsageWeek = usage.weekId || currentWeek;
+  const selectedUsageWeekRange = getWeekRangeFromId(selectedUsageWeek, weekSettings);
+  const selectedUsageWeekData = getWeeklyData(state, selectedUsageWeek);
+  const totalFeedPurchasedKg = state.feedPurchases.reduce((sum, item) => sum + item.quantityKg, 0);
+  const totalFeedSpend = state.feedPurchases.reduce((sum, item) => sum + item.priceCop, 0);
+  const averageFeedCostPerKg = totalFeedPurchasedKg ? totalFeedSpend / totalFeedPurchasedKg : 0;
+  const estimatedWeeklyFeedCost = usage.quantityKg * averageFeedCostPerKg;
+  const estimatedCostPerEgg = selectedUsageWeekData.goodEggs
+    ? estimatedWeeklyFeedCost / selectedUsageWeekData.goodEggs
+    : 0;
 
   function submitPurchase(e: FormEvent) {
     e.preventDefault();
@@ -981,9 +995,14 @@ function ExpensesSection({
 
   function submitUsage(e: FormEvent) {
     e.preventDefault();
-    const next = { id: makeId("feed-use"), ...usage };
+    const next = {
+      id: makeId("feed-use"),
+      date: format(selectedUsageWeekRange.start, "yyyy-MM-dd"),
+      quantityKg: usage.quantityKg,
+      notes: usage.notes || selectedUsageWeek,
+    };
     updateState({ ...state, feedUsage: [...state.feedUsage, next] }, "Feed usage saved.");
-    setUsage({ date: todayIso(), quantityKg: 0, notes: "" });
+    setUsage({ weekId: currentWeek, quantityKg: 0, notes: "" });
   }
 
   function submitExpense(e: FormEvent) {
@@ -1030,9 +1049,21 @@ function ExpensesSection({
           <div className="admin-summary-strip"><span>Stock: {formatNumber(metrics.feedStockKg)} kg</span><span>{metrics.feedDaysRemaining} days</span></div>
         </div>
         <form className="admin-form" onSubmit={submitUsage}>
-          <AdminField label="Date"><input type="date" value={usage.date} onChange={(e) => setUsage({ ...usage, date: e.target.value })} /></AdminField>
-          <AdminField label="Quantity kg"><input inputMode="numeric" value={usage.quantityKg || ""} onChange={(e) => setUsage({ ...usage, quantityKg: parseNumber(e.target.value) })} /></AdminField>
+          <AdminField label="Week">
+            <select value={usage.weekId} onChange={(e) => setUsage({ ...usage, weekId: e.target.value })}>
+              {allWeeks.map((week) => (
+                <option key={week} value={week}>{week} ({formatWeekRange(week, weekSettings)})</option>
+              ))}
+            </select>
+          </AdminField>
+          <AdminField label="Kg used this week"><input inputMode="numeric" value={usage.quantityKg || ""} onChange={(e) => setUsage({ ...usage, quantityKg: parseNumber(e.target.value) })} /></AdminField>
           <AdminField label="Notes"><input value={usage.notes} onChange={(e) => setUsage({ ...usage, notes: e.target.value })} /></AdminField>
+          <div className="admin-summary-strip">
+            <span>{formatWeekRange(selectedUsageWeek, weekSettings)}</span>
+            <span>{formatCop(averageFeedCostPerKg)}/kg</span>
+            <span>{selectedUsageWeekData.goodEggs} good eggs</span>
+            <span>{estimatedCostPerEgg ? `${formatCop(estimatedCostPerEgg)}/egg` : "No egg cost yet"}</span>
+          </div>
           <button className="admin-primary-button"><Save size={17} /> Save</button>
         </form>
         <AdminRecordList
@@ -1040,10 +1071,11 @@ function ExpensesSection({
           label="Recent usage"
           items={state.feedUsage.slice().reverse().map((u) => ({
             amount: `${formatNumber(u.quantityKg)} kg`,
-            detail: u.notes || "No notes",
-            eyebrow: u.date,
+            chips: [formatWeekRange(getWeekId(u.date, weekSettings), weekSettings)],
+            detail: u.notes || "Weekly feed usage",
+            eyebrow: getWeekId(u.date, weekSettings),
             id: u.id,
-            title: "Feed used",
+            title: "Feed used this week",
             action: <button className="admin-table-action" onClick={() => removeFeedUsage(u.id)} title="Delete"><Trash2 size={14} /></button>,
           }))}
         />
