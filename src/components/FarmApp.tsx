@@ -17,6 +17,7 @@ import {
   Home,
   LogOut,
   Moon,
+  Pencil,
   Plus,
   Package,
   PiggyBank,
@@ -29,6 +30,7 @@ import {
   Sun,
   Trash2,
   Wallet,
+  X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -49,6 +51,7 @@ import {
   calculateFarmMetrics,
   formatCop,
   formatNumber,
+  formatWeekRange,
   getEggChartData,
   getEggStockByCategoryData,
   getFeedChartData,
@@ -59,6 +62,7 @@ import {
   getAllWeeks,
   getDayName,
   getCostPerEggByWeek,
+  normalizeAccountingWeekSettings,
 } from "@/lib/calculations";
 import {
   EGG_SIZE_ORDER,
@@ -481,6 +485,7 @@ export default function FarmApp() {
           ) : null}
           {effectiveTab === "eggs" ? (
             <EggLoggingSection
+              key={`${state.accountingWeekSettings.startDate}-${state.accountingWeekSettings.startWeek}`}
               state={state}
               updateState={updateState}
               queueOfflineItem={queueOfflineItem}
@@ -753,7 +758,7 @@ function EggLoggingSection({
   online: boolean;
   metrics: ReturnType<typeof calculateFarmMetrics>;
 }) {
-  const [form, setForm] = useState({
+  const createEmptyEggLogForm = () => ({
     date: todayIso(),
     totalEggs: 0,
     crackedEggs: 0,
@@ -764,7 +769,11 @@ function EggLoggingSection({
     notes: "",
   });
 
+  const [form, setForm] = useState(createEmptyEggLogForm);
+  const [editingLogId, setEditingLogId] = useState("");
   const [searchWeek, setSearchWeek] = useState("");
+  const weekSettings = normalizeAccountingWeekSettings(state.accountingWeekSettings);
+  const [weekSettingsForm, setWeekSettingsForm] = useState(weekSettings);
   const allWeeks = useMemo(() => getAllWeeks(state), [state]);
   const weeklyData = useMemo(
     () => (searchWeek ? getWeeklyData(state, searchWeek) : null),
@@ -794,34 +803,71 @@ function EggLoggingSection({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    const existingLog = editingLogId
+      ? state.eggLogs.find((log) => log.id === editingLogId)
+      : undefined;
     const entry = {
-      id: makeId("egg"),
+      id: editingLogId || makeId("egg"),
       ...form,
+      sizeBreakdown: normalizeEggSizeBreakdown(form.sizeBreakdown),
       synced: online,
-      createdAt: nowIso(),
+      createdAt: existingLog?.createdAt || nowIso(),
     };
+    const eggLogs = editingLogId
+      ? state.eggLogs.map((log) => (log.id === editingLogId ? entry : log))
+      : [...state.eggLogs.filter((log) => log.date !== form.date), entry];
 
     updateState({
       ...state,
-      eggLogs: [
-        ...state.eggLogs.filter((log) => log.date !== form.date),
-        entry,
-      ].sort((a, b) => a.date.localeCompare(b.date)),
-      offlineQueue: [
-        ...state.offlineQueue,
-        queueOfflineItem("egg_logs", entry),
-      ],
+      eggLogs: eggLogs.sort((a, b) => a.date.localeCompare(b.date)),
+      offlineQueue: editingLogId
+        ? state.offlineQueue
+        : [...state.offlineQueue, queueOfflineItem("egg_logs", entry)],
     });
 
+    setEditingLogId("");
+    setForm(createEmptyEggLogForm());
+  }
+
+  function editLog(logId: string) {
+    const log = state.eggLogs.find((item) => item.id === logId);
+    if (!log) return;
+    setEditingLogId(log.id);
     setForm({
-      date: todayIso(),
-      totalEggs: 0,
-      crackedEggs: 0,
-      sizeBreakdown: normalizeEggSizeBreakdown(),
-      feedConsumedKg: 0,
-      vitaminInWater: "",
-      vitaminInFeed: "",
-      notes: "",
+      date: log.date,
+      totalEggs: log.totalEggs,
+      crackedEggs: log.crackedEggs,
+      sizeBreakdown: normalizeEggSizeBreakdown(log.sizeBreakdown),
+      feedConsumedKg: log.feedConsumedKg,
+      vitaminInWater: log.vitaminInWater,
+      vitaminInFeed: log.vitaminInFeed,
+      notes: log.notes || "",
+    });
+  }
+
+  function removeLog(logId: string) {
+    if (editingLogId === logId) {
+      setEditingLogId("");
+      setForm(createEmptyEggLogForm());
+    }
+    updateState({
+      ...state,
+      eggLogs: state.eggLogs.filter((log) => log.id !== logId),
+    });
+  }
+
+  function cancelEdit() {
+    setEditingLogId("");
+    setForm(createEmptyEggLogForm());
+  }
+
+  function saveWeekSettings(event: FormEvent) {
+    event.preventDefault();
+    const nextSettings = normalizeAccountingWeekSettings(weekSettingsForm);
+
+    updateState({
+      ...state,
+      accountingWeekSettings: nextSettings,
     });
   }
 
@@ -904,8 +950,18 @@ function EggLoggingSection({
             </div>
             <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
               <Save size={20} />
-              Save egg log
+              {editingLogId ? "Save changes" : "Save egg log"}
             </button>
+            {editingLogId ? (
+              <button
+                className="secondary-button flex h-14 items-center justify-center gap-2 text-base"
+                type="button"
+                onClick={cancelEdit}
+              >
+                <X size={18} />
+                Cancel edit
+              </button>
+            ) : null}
           </form>
         </Card>
 
@@ -965,6 +1021,42 @@ function EggLoggingSection({
 
       <Card title="Weekly search" icon={SearchIcon}>
         <div className="grid gap-4">
+          <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={saveWeekSettings}>
+            <Field label="Start date">
+              <input
+                className="input"
+                type="date"
+                value={weekSettingsForm.startDate}
+                onChange={(event) =>
+                  setWeekSettingsForm({
+                    ...weekSettingsForm,
+                    startDate: event.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field label="Start week">
+              <input
+                className="input"
+                inputMode="numeric"
+                value={formatNumericInputValue(weekSettingsForm.startWeek)}
+                onChange={(event) =>
+                  setWeekSettingsForm({
+                    ...weekSettingsForm,
+                    startWeek: parseNumericInputValue(event.target.value),
+                  })
+                }
+              />
+            </Field>
+            <button className="secondary-button flex h-14 items-center justify-center gap-2 self-end px-5">
+              <Save size={18} />
+              Update weeks
+            </button>
+          </form>
+          <div className="soft-panel grid gap-1 p-3 text-sm font-bold text-[var(--muted)]">
+            <span>{getWeekId(weekSettings.startDate, weekSettings)}</span>
+            <span>{formatWeekRange(getWeekId(weekSettings.startDate, weekSettings), weekSettings)}</span>
+          </div>
           <Field label="Select week">
             <select
               className="input"
@@ -974,7 +1066,7 @@ function EggLoggingSection({
               <option value="">-- Select a week --</option>
               {allWeeks.map((week) => (
                 <option key={week} value={week}>
-                  {week}
+                  {week} ({formatWeekRange(week, weekSettings)})
                 </option>
               ))}
             </select>
@@ -986,6 +1078,9 @@ function EggLoggingSection({
                 <div>
                   <p className="text-xs font-bold text-[var(--muted)]">Week</p>
                   <p className="text-lg font-black">{weeklyData.weekId}</p>
+                  <p className="text-xs font-bold text-[var(--muted)]">
+                    {format(weeklyData.weekStart, "yyyy-MM-dd")} to {format(weeklyData.weekEnd, "yyyy-MM-dd")}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs font-bold text-[var(--muted)]">Total eggs</p>
@@ -1084,6 +1179,24 @@ function EggLoggingSection({
                     {log.vitaminInFeed && `🍽️ ${log.vitaminInFeed}`}
                   </p>
                 )}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    className="secondary-button flex h-11 items-center justify-center gap-2 text-sm"
+                    type="button"
+                    onClick={() => editLog(log.id)}
+                  >
+                    <Pencil size={16} />
+                    Edit
+                  </button>
+                  <button
+                    className="terracotta-button flex h-11 items-center justify-center gap-2 text-sm"
+                    type="button"
+                    onClick={() => removeLog(log.id)}
+                  >
+                    <Trash2 size={16} />
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
         </div>
@@ -1214,7 +1327,7 @@ function SalesSection({
               .slice()
               .reverse()
               .map((sale) => {
-                const saleWeek = getWeekId(sale.date);
+                const saleWeek = getWeekId(sale.date, state.accountingWeekSettings);
                 const costPerEgg = costPerEggByWeek[saleWeek];
                 return (
                   <div key={sale.id} className="soft-panel p-4">

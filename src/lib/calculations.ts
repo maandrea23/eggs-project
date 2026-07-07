@@ -1,13 +1,13 @@
 import {
+  addDays,
   differenceInCalendarDays,
   endOfMonth,
   format,
+  isValid,
   isWithinInterval,
   parseISO,
   startOfMonth,
   subDays,
-  getISOWeek,
-  startOfWeek,
 } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -25,9 +25,14 @@ import type {
   InvestmentCategory,
   InvestmentItem,
   EggLog,
+  AccountingWeekSettings,
 } from "./types";
 
 export const CARTON_SIZE = 30;
+export const DEFAULT_ACCOUNTING_WEEK_SETTINGS: AccountingWeekSettings = {
+  startDate: "2026-06-02",
+  startWeek: 17,
+};
 
 export const formatCop = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -39,19 +44,77 @@ export const formatCop = (value: number) =>
 export const formatNumber = (value: number) =>
   new Intl.NumberFormat("es-CO", { maximumFractionDigits: 1 }).format(value);
 
-export const getWeekId = (dateStr: string) => {
-  const date = parseISO(dateStr);
-  const year = date.getFullYear();
-  const week = getISOWeek(date);
-  return `${year}-W${String(week).padStart(2, "0")}`;
+export const normalizeAccountingWeekSettings = (
+  settings?: Partial<AccountingWeekSettings>,
+): AccountingWeekSettings => {
+  const parsedStart = parseISO(settings?.startDate ?? "");
+  const startWeek = Number(settings?.startWeek);
+
+  return {
+    startDate: isValid(parsedStart)
+      ? format(parsedStart, "yyyy-MM-dd")
+      : DEFAULT_ACCOUNTING_WEEK_SETTINGS.startDate,
+    startWeek: Number.isFinite(startWeek) && startWeek > 0
+      ? Math.round(startWeek)
+      : DEFAULT_ACCOUNTING_WEEK_SETTINGS.startWeek,
+  };
 };
 
-export const getWeekRange = (dateStr: string) => {
+function getWeekOffset(dateStr: string, settings?: Partial<AccountingWeekSettings>) {
+  const accountingWeek = normalizeAccountingWeekSettings(settings);
   const date = parseISO(dateStr);
-  const start = startOfWeek(date, { weekStartsOn: 1 });
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
+  const startDate = parseISO(accountingWeek.startDate);
+
+  if (!isValid(date)) {
+    return 0;
+  }
+
+  return Math.floor(differenceInCalendarDays(date, startDate) / 7);
+}
+
+export const getWeekId = (
+  dateStr: string,
+  settings?: Partial<AccountingWeekSettings>,
+) => {
+  const accountingWeek = normalizeAccountingWeekSettings(settings);
+  const weekNumber = accountingWeek.startWeek + getWeekOffset(dateStr, accountingWeek);
+  return `Semana ${weekNumber}`;
+};
+
+export const getWeekRange = (
+  dateStr: string,
+  settings?: Partial<AccountingWeekSettings>,
+) => {
+  const accountingWeek = normalizeAccountingWeekSettings(settings);
+  const start = addDays(
+    parseISO(accountingWeek.startDate),
+    getWeekOffset(dateStr, accountingWeek) * 7,
+  );
+  const end = addDays(start, 6);
   return { start, end };
+};
+
+export const getWeekRangeFromId = (
+  weekId: string,
+  settings?: Partial<AccountingWeekSettings>,
+) => {
+  const accountingWeek = normalizeAccountingWeekSettings(settings);
+  const match = weekId.match(/-?\d+/);
+  const weekNumber = match ? Number.parseInt(match[0], 10) : accountingWeek.startWeek;
+  const start = addDays(
+    parseISO(accountingWeek.startDate),
+    (weekNumber - accountingWeek.startWeek) * 7,
+  );
+  const end = addDays(start, 6);
+  return { start, end };
+};
+
+export const formatWeekRange = (
+  weekId: string,
+  settings?: Partial<AccountingWeekSettings>,
+) => {
+  const { start, end } = getWeekRangeFromId(weekId, settings);
+  return `${format(start, "yyyy-MM-dd")} to ${format(end, "yyyy-MM-dd")}`;
 };
 
 export const getDayName = (dateStr: string) => {
@@ -666,14 +729,21 @@ export function buildInsights(state: FarmState): Insight[] {
 }
 
 export function getWeeklyData(state: FarmState, weekId: string) {
-  const logs = state.eggLogs.filter((log) => getWeekId(log.date) === weekId);
-  const weekStart = logs.length > 0 ? getWeekRange(logs[0].date).start : null;
-  const weekEnd = logs.length > 0 ? getWeekRange(logs[0].date).end : null;
+  const weekSettings = state.accountingWeekSettings;
+  const { start: weekStart, end: weekEnd } = getWeekRangeFromId(
+    weekId,
+    weekSettings,
+  );
+  const isDateInSelectedWeek = (dateStr: string) =>
+    isWithinInterval(parseISO(dateStr), { start: weekStart, end: weekEnd });
+  const logs = state.eggLogs.filter((log) =>
+    getWeekId(log.date, weekSettings) === weekId,
+  );
 
   const vaccines = state.healthRecords.filter(
     (r) =>
       r.type === "vaccination" &&
-      logs.some((log) => log.date === r.date),
+      isDateInSelectedWeek(r.date),
   );
 
   const totalEggs = logs.reduce((sum, log) => sum + getCollectedEggs(log), 0);
@@ -688,12 +758,8 @@ export function getWeeklyData(state: FarmState, weekId: string) {
     : 0;
 
   const feedConsumed = logs.reduce((sum, log) => sum + (log.feedConsumedKg || 0), 0);
-  const weeklyCosts = state.expenses.filter((e) =>
-    logs.some((log) => log.date === e.date),
-  );
-  const weeklySales = state.sales.filter((s) =>
-    logs.some((log) => log.date === s.date),
-  );
+  const weeklyCosts = state.expenses.filter((e) => isDateInSelectedWeek(e.date));
+  const weeklySales = state.sales.filter((s) => isDateInSelectedWeek(s.date));
   const totalRevenue = weeklySales.reduce(
     (sum, s) => sum + s.cartons * s.pricePerCartonCop,
     0,
@@ -718,11 +784,29 @@ export function getWeeklyData(state: FarmState, weekId: string) {
 }
 
 export function getAllWeeks(state: FarmState): string[] {
-  const weeks = new Set<string>();
-  for (const log of state.eggLogs) {
-    weeks.add(getWeekId(log.date));
+  const weekSettings = normalizeAccountingWeekSettings(state.accountingWeekSettings);
+  const dates = [
+    weekSettings.startDate,
+    format(new Date(), "yyyy-MM-dd"),
+    ...state.eggLogs.map((log) => log.date),
+    ...state.sales.map((sale) => sale.date),
+    ...state.feedPurchases.map((purchase) => purchase.date),
+    ...state.feedUsage.map((usage) => usage.date),
+    ...state.expenses.map((expense) => expense.date),
+    ...state.healthRecords.map((record) => record.date),
+    ...state.flockArrivals.map((arrival) => arrival.date),
+    ...state.mortalityRecords.map((record) => record.date),
+  ].filter((date) => isValid(parseISO(date)));
+  const offsets = dates.map((date) => getWeekOffset(date, weekSettings));
+  const firstOffset = Math.min(0, ...offsets);
+  const lastOffset = Math.max(0, ...offsets);
+  const weeks: string[] = [];
+
+  for (let offset = firstOffset; offset <= lastOffset; offset += 1) {
+    weeks.push(`Semana ${weekSettings.startWeek + offset}`);
   }
-  return Array.from(weeks).sort();
+
+  return weeks;
 }
 
 export function getCostPerEggByWeek(state: FarmState): Record<string, number> {
@@ -730,7 +814,7 @@ export function getCostPerEggByWeek(state: FarmState): Record<string, number> {
   const weeklyEggs = new Map<string, number>();
 
   for (const purchase of state.feedPurchases) {
-    const weekId = getWeekId(purchase.date);
+    const weekId = getWeekId(purchase.date, state.accountingWeekSettings);
     weeklyFeedSpend.set(
       weekId,
       (weeklyFeedSpend.get(weekId) ?? 0) + purchase.priceCop,
@@ -738,7 +822,7 @@ export function getCostPerEggByWeek(state: FarmState): Record<string, number> {
   }
 
   for (const log of state.eggLogs) {
-    const weekId = getWeekId(log.date);
+    const weekId = getWeekId(log.date, state.accountingWeekSettings);
     weeklyEggs.set(weekId, (weeklyEggs.get(weekId) ?? 0) + getGoodEggs(log));
   }
 

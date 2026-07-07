@@ -18,6 +18,7 @@ import {
   LineChart as LineChartIcon,
   Package,
   PieChart as PieChartIcon,
+  Pencil,
   PiggyBank,
   Plus,
   ReceiptText,
@@ -30,6 +31,7 @@ import {
   Sun,
   Trash2,
   Wallet,
+  X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -54,6 +56,7 @@ import {
   calculateFarmMetrics,
   formatCop,
   formatNumber,
+  formatWeekRange,
   getEggChartData,
   getEggStockByCategoryData,
   getFeedChartData,
@@ -64,6 +67,7 @@ import {
   getDayName,
   getWeeklyData,
   getAllWeeks,
+  normalizeAccountingWeekSettings,
 } from "@/lib/calculations";
 import {
   EGG_SIZE_ORDER,
@@ -213,6 +217,59 @@ function AdminTable({ headers, rows }: { headers: string[]; rows: React.ReactNod
   );
 }
 
+function AdminRecordList({
+  emptyLabel,
+  items,
+  label,
+}: {
+  emptyLabel: string;
+  label: string;
+  items: Array<{
+    amount?: React.ReactNode;
+    chips?: React.ReactNode[];
+    detail?: React.ReactNode;
+    eyebrow: React.ReactNode;
+    id: string;
+    title: React.ReactNode;
+    action?: React.ReactNode;
+  }>;
+}) {
+  return (
+    <div className="admin-record-section">
+      <div className="admin-record-heading">
+        <span>{label}</span>
+        <strong>{items.length}</strong>
+      </div>
+      {!items.length ? (
+        <div className="admin-record-empty">{emptyLabel}</div>
+      ) : (
+        <div className="admin-record-list">
+          {items.map((item) => (
+            <div className="admin-record-row" key={item.id}>
+              <div className="admin-record-main">
+                <div className="admin-record-topline">
+                  <span>{item.eyebrow}</span>
+                  {item.action ? <div className="admin-record-action">{item.action}</div> : null}
+                </div>
+                <div className="admin-record-body">
+                  <div className="admin-record-title">{item.title}</div>
+                  {item.amount ? <div className="admin-record-amount">{item.amount}</div> : null}
+                </div>
+                {item.detail ? <div className="admin-record-detail">{item.detail}</div> : null}
+                {item.chips?.length ? (
+                  <div className="admin-record-chips">
+                    {item.chips.map((chip, index) => <span key={index}>{chip}</span>)}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FarmAdminPage() {
   const [state, setState] = useState<FarmState>(() => createFreshFarmState());
   const [loaded, setLoaded] = useState(false);
@@ -328,7 +385,11 @@ export default function FarmAdminPage() {
             <OverviewSection state={state} metrics={metrics} alerts={alerts} insights={insights} chartData={eggChartData} />
           )}
           {activeSection === "eggs" && (
-            <EggsSection state={state} updateState={updateState} />
+            <EggsSection
+              key={`${state.accountingWeekSettings.startDate}-${state.accountingWeekSettings.startWeek}`}
+              state={state}
+              updateState={updateState}
+            />
           )}
           {activeSection === "sales" && (
             <SalesSection state={state} metrics={metrics} chartData={salesChartData} updateState={updateState} />
@@ -469,7 +530,7 @@ function EggsSection({
   state: FarmState;
   updateState: (state: FarmState, message: string) => void;
 }) {
-  const [form, setForm] = useState({
+  const createEmptyEggLogForm = () => ({
     date: todayIso(),
     totalEggs: 0,
     crackedEggs: 0,
@@ -479,7 +540,11 @@ function EggsSection({
     vitaminInFeed: "",
     notes: "",
   });
+
+  const [form, setForm] = useState(createEmptyEggLogForm);
+  const [editingLogId, setEditingLogId] = useState("");
   const [searchWeek, setSearchWeek] = useState("");
+  const weekSettings = normalizeAccountingWeekSettings(state.accountingWeekSettings);
 
   const totalEggs = form.totalEggs;
   const goodEggs = Math.max(totalEggs - form.crackedEggs, 0);
@@ -496,15 +561,48 @@ function EggsSection({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const entry = { id: makeId("egg"), ...form, synced: true, createdAt: nowIso() };
+    const existingLog = editingLogId
+      ? state.eggLogs.find((log) => log.id === editingLogId)
+      : undefined;
+    const entry = {
+      id: editingLogId || makeId("egg"),
+      ...form,
+      sizeBreakdown: normalizeEggSizeBreakdown(form.sizeBreakdown),
+      synced: true,
+      createdAt: existingLog?.createdAt || nowIso(),
+    };
+    const eggLogs = editingLogId
+      ? state.eggLogs.map((log) => (log.id === editingLogId ? entry : log))
+      : [...state.eggLogs.filter((log) => log.date !== form.date), entry];
     updateState({
       ...state,
-      eggLogs: [...state.eggLogs.filter((log) => log.date !== form.date), entry].sort((a, b) => a.date.localeCompare(b.date)),
-    }, "Egg log saved.");
-    setForm({ date: todayIso(), totalEggs: 0, crackedEggs: 0, sizeBreakdown: normalizeEggSizeBreakdown(), feedConsumedKg: 0, vitaminInWater: "", vitaminInFeed: "", notes: "" });
+      eggLogs: eggLogs.sort((a, b) => a.date.localeCompare(b.date)),
+    }, editingLogId ? "Egg log updated." : "Egg log saved.");
+    setEditingLogId("");
+    setForm(createEmptyEggLogForm());
+  }
+
+  function editLog(logId: string) {
+    const log = state.eggLogs.find((item) => item.id === logId);
+    if (!log) return;
+    setEditingLogId(log.id);
+    setForm({
+      date: log.date,
+      totalEggs: log.totalEggs,
+      crackedEggs: log.crackedEggs,
+      sizeBreakdown: normalizeEggSizeBreakdown(log.sizeBreakdown),
+      feedConsumedKg: log.feedConsumedKg,
+      vitaminInWater: log.vitaminInWater,
+      vitaminInFeed: log.vitaminInFeed,
+      notes: log.notes || "",
+    });
   }
 
   function removeLog(id: string) {
+    if (editingLogId === id) {
+      setEditingLogId("");
+      setForm(createEmptyEggLogForm());
+    }
     updateState({ ...state, eggLogs: state.eggLogs.filter((log) => log.id !== id) }, "Egg log deleted.");
   }
 
@@ -549,7 +647,21 @@ function EggsSection({
             <span>{cartons} cartons</span>
             <span>{looseEggs} loose</span>
           </div>
-          <button className="admin-primary-button"><Save size={17} /> Save Egg Log</button>
+          <button className="admin-primary-button">
+            <Save size={17} /> {editingLogId ? "Save Changes" : "Save Egg Log"}
+          </button>
+          {editingLogId ? (
+            <button
+              type="button"
+              className="admin-secondary-button"
+              onClick={() => {
+                setEditingLogId("");
+                setForm(createEmptyEggLogForm());
+              }}
+            >
+              <X size={16} /> Cancel edit
+            </button>
+          ) : null}
         </form>
       </section>
 
@@ -584,20 +696,21 @@ function EggsSection({
 
       <section className="admin-panel admin-span-12">
         <div className="admin-panel-header">
-          <div><p className="admin-eyebrow">Weekly search</p><h2>Search by week</h2></div>
+          <div><p className="admin-eyebrow">Weekly view</p><h2>Select week</h2></div>
           <ClipboardList size={20} />
         </div>
         <div className="admin-form">
           <AdminField label="Select week">
             <select value={searchWeek} onChange={(e) => setSearchWeek(e.target.value)}>
               <option value="">-- Select a week --</option>
-              {allWeeks.map((w) => <option key={w} value={w}>{w}</option>)}
+              {allWeeks.map((w) => <option key={w} value={w}>{w} ({formatWeekRange(w, weekSettings)})</option>)}
             </select>
           </AdminField>
           {weeklyData && (
             <div className="admin-stack">
               <div className="admin-summary-strip">
                 <span>Week: {weeklyData.weekId}</span>
+                <span>{format(weeklyData.weekStart, "yyyy-MM-dd")} to {format(weeklyData.weekEnd, "yyyy-MM-dd")}</span>
                 <span>Eggs: {weeklyData.totalEggs}</span>
                 <span>Good: {weeklyData.goodEggs}</span>
                 <span>Laying: {weeklyData.layingPercentage}%</span>
@@ -647,7 +760,10 @@ function EggsSection({
             log.feedConsumedKg ? `${log.feedConsumedKg}kg` : "-",
             [log.vitaminInWater ? `W:${log.vitaminInWater}` : "", log.vitaminInFeed ? `F:${log.vitaminInFeed}` : ""].filter(Boolean).join(" ") || "-",
             [formatEggSizeBreakdown(log.sizeBreakdown), log.notes || ""].filter(Boolean).join(" | ") || "-",
-            <button key="del" className="admin-table-action" onClick={() => removeLog(log.id)} title="Delete"><Trash2 size={15} /></button>,
+            <span key="actions" className="admin-table-actions">
+              <button className="admin-table-action" onClick={() => editLog(log.id)} title="Edit"><Pencil size={15} /></button>
+              <button className="admin-table-action" onClick={() => removeLog(log.id)} title="Delete"><Trash2 size={15} /></button>
+            </span>,
           ])}
         />
       </section>
@@ -703,7 +819,7 @@ function SalesSection({
         <AdminTable
           headers={["Date", "Customer", "Cartons", "Price/carton", "Price/egg", "Total", "Cost/egg", ""]}
           rows={state.sales.slice().reverse().map((sale) => {
-            const week = getWeekId(sale.date);
+            const week = getWeekId(sale.date, state.accountingWeekSettings);
             const cost = costPerEggByWeek[week];
             return [
               sale.date,
@@ -893,7 +1009,19 @@ function ExpensesSection({
           <AdminField label="Supplier"><input value={purchase.supplier} onChange={(e) => setPurchase({ ...purchase, supplier: e.target.value })} /></AdminField>
           <button className="admin-primary-button"><Save size={17} /> Save</button>
         </form>
-        <AdminTable headers={["Date", "Kg", "Price", ""]} rows={state.feedPurchases.slice().reverse().map((p) => [p.date, `${p.quantityKg}kg`, formatCop(p.priceCop), <button key="del" className="admin-table-action" onClick={() => removeFeedPurchase(p.id)}><Trash2 size={14} /></button>])} />
+        <AdminRecordList
+          emptyLabel="No feed purchases yet."
+          label="Recent purchases"
+          items={state.feedPurchases.slice().reverse().map((p) => ({
+            amount: formatCop(p.priceCop),
+            chips: [`${formatNumber(p.quantityKg)} kg`],
+            detail: p.supplier ? `Supplier: ${p.supplier}` : "No supplier listed",
+            eyebrow: p.date,
+            id: p.id,
+            title: p.feedType,
+            action: <button className="admin-table-action" onClick={() => removeFeedPurchase(p.id)} title="Delete"><Trash2 size={14} /></button>,
+          }))}
+        />
       </section>
 
       <section className="admin-panel admin-span-4">
@@ -907,7 +1035,18 @@ function ExpensesSection({
           <AdminField label="Notes"><input value={usage.notes} onChange={(e) => setUsage({ ...usage, notes: e.target.value })} /></AdminField>
           <button className="admin-primary-button"><Save size={17} /> Save</button>
         </form>
-        <AdminTable headers={["Date", "Kg", "Notes", ""]} rows={state.feedUsage.slice().reverse().map((u) => [u.date, `${u.quantityKg}kg`, u.notes || "-", <button key="del" className="admin-table-action" onClick={() => removeFeedUsage(u.id)}><Trash2 size={14} /></button>])} />
+        <AdminRecordList
+          emptyLabel="No feed usage yet."
+          label="Recent usage"
+          items={state.feedUsage.slice().reverse().map((u) => ({
+            amount: `${formatNumber(u.quantityKg)} kg`,
+            detail: u.notes || "No notes",
+            eyebrow: u.date,
+            id: u.id,
+            title: "Feed used",
+            action: <button className="admin-table-action" onClick={() => removeFeedUsage(u.id)} title="Delete"><Trash2 size={14} /></button>,
+          }))}
+        />
       </section>
 
       <section className="admin-panel admin-span-4">
@@ -923,7 +1062,19 @@ function ExpensesSection({
           <AdminField label="Description"><input value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} /></AdminField>
           <button className="admin-primary-button"><Save size={17} /> Save</button>
         </form>
-        <AdminTable headers={["Date", "Category", "Amount", ""]} rows={state.expenses.slice().reverse().map((e) => [e.date, e.category, formatCop(e.amountCop), <button key="del" className="admin-table-action" onClick={() => removeExpense(e.id)}><Trash2 size={14} /></button>])} />
+        <AdminRecordList
+          emptyLabel="No expenses yet."
+          label="Recent expenses"
+          items={state.expenses.slice().reverse().map((e) => ({
+            amount: formatCop(e.amountCop),
+            chips: [e.category],
+            detail: e.description || "No description",
+            eyebrow: e.date,
+            id: e.id,
+            title: e.description || "Expense",
+            action: <button className="admin-table-action" onClick={() => removeExpense(e.id)} title="Delete"><Trash2 size={14} /></button>,
+          }))}
+        />
       </section>
 
       <section className="admin-panel admin-span-12">

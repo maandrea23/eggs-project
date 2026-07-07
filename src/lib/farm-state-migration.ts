@@ -3,7 +3,34 @@ import {
   getEggSizeTotal,
   normalizeEggSizeBreakdown,
 } from "./egg-classification";
-import type { EggSizeBreakdown, EggSizeCategory, FarmState } from "./types";
+import type {
+  AccountingWeekSettings,
+  EggSizeBreakdown,
+  EggSizeCategory,
+  FarmState,
+} from "./types";
+
+const DEFAULT_ACCOUNTING_WEEK_SETTINGS: AccountingWeekSettings = {
+  startDate: "2026-06-02",
+  startWeek: 17,
+};
+
+function normalizeAccountingWeekSettings(
+  settings?: Partial<AccountingWeekSettings>,
+): AccountingWeekSettings {
+  const startDate =
+    typeof settings?.startDate === "string" && settings.startDate
+      ? settings.startDate
+      : DEFAULT_ACCOUNTING_WEEK_SETTINGS.startDate;
+  const startWeek = Number(settings?.startWeek);
+
+  return {
+    startDate,
+    startWeek: Number.isFinite(startWeek) && startWeek > 0
+      ? Math.round(startWeek)
+      : DEFAULT_ACCOUNTING_WEEK_SETTINGS.startWeek,
+  };
+}
 
 function parseSizeBreakdownFromNotes(notes?: string) {
   if (!notes) {
@@ -68,8 +95,12 @@ function buildBreakdownByDateFromSales(state: FarmState) {
 }
 
 export function migrateFarmState(state: FarmState): FarmState {
+  const legacyState = state as Partial<FarmState>;
   const withDefaults: FarmState = {
     ...state,
+    accountingWeekSettings: normalizeAccountingWeekSettings(
+      legacyState.accountingWeekSettings,
+    ),
     flockArrivals: (state as any).flockArrivals ?? [],
     mortalityRecords: (state as any).mortalityRecords ?? [],
   };

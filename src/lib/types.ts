@@ -12,6 +12,11 @@ export type EggLog = {
   createdAt: string;
 };
 
+export type AccountingWeekSettings = {
+  startDate: string;
+  startWeek: number;
+};
+
 export type EggSizeCategory = "C" | "B" | "A" | "AA" | "AAA" | "Jumbo";
 
 export type EggTrayType = "B" | "A" | "AA" | "AAA";
@@ -149,6 +154,7 @@ export type InvestmentItem = {
 export type UserRole = "owner" | "operator";
 
 export type FarmState = {
+  accountingWeekSettings: AccountingWeekSettings;
   flockArrivals: FlockArrival[];
   mortalityRecords: MortalityRecord[];
   eggLogs: EggLog[];
