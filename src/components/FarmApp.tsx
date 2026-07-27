@@ -14,6 +14,8 @@ import {
   Download,
   Egg,
   Ellipsis,
+  Eye,
+  EyeOff,
   HeartPulse,
   Home,
   LockKeyhole,
@@ -217,6 +219,7 @@ export default function FarmApp() {
   const [userMode, setUserMode] = useState<UserMode | null>(null);
   const [ownerUsername, setOwnerUsername] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("");
+  const [isOwnerPasswordVisible, setIsOwnerPasswordVisible] = useState(false);
   const [ownerLoginPending, setOwnerLoginPending] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [online, setOnline] = useState(true);
@@ -456,7 +459,7 @@ export default function FarmApp() {
             <form className="grid gap-4" onSubmit={handleOwnerLogin}>
               <Field label="Usuario">
                 <input
-                  className="soft-input"
+                  className="input border-2 border-[var(--olive)]"
                   value={ownerUsername}
                   onChange={(event) => setOwnerUsername(event.target.value)}
                   autoComplete="username"
@@ -464,14 +467,25 @@ export default function FarmApp() {
                 />
               </Field>
               <Field label="Contraseña">
-                <input
-                  className="soft-input"
-                  type="password"
-                  value={ownerPassword}
-                  onChange={(event) => setOwnerPassword(event.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    className="input border-2 border-[var(--olive)] pr-12"
+                    type={isOwnerPasswordVisible ? "text" : "password"}
+                    value={ownerPassword}
+                    onChange={(event) => setOwnerPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                  <button
+                    aria-label={isOwnerPasswordVisible ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    aria-pressed={isOwnerPasswordVisible}
+                    className="absolute inset-y-0 right-0 grid w-12 place-items-center text-[var(--muted)] transition hover:text-[var(--forest)]"
+                    onClick={() => setIsOwnerPasswordVisible((isVisible) => !isVisible)}
+                    type="button"
+                  >
+                    {isOwnerPasswordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
               </Field>
               <button
                 className="primary-button flex h-14 items-center justify-center gap-2 px-4 text-base"
