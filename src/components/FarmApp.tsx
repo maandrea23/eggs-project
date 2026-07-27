@@ -1727,6 +1727,7 @@ function SalesSection({
     purchaseLocation: "",
   });
   const [saleMessage, setSaleMessage] = useState("");
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
   const selectedWeekId = getWeekId(form.date, state.accountingWeekSettings);
   const selectedWeekCost = useMemo(
     () => getWeeklyEggCostBreakdown(state, selectedWeekId),
@@ -1742,12 +1743,71 @@ function SalesSection({
   const selectedCategoryStock = stockByCategory.rows.find(
     (row) => row.category === form.cartonType,
   );
-  const cartonsAvailableForType = selectedCategoryStock?.cartons ?? 0;
+  const saleBeingEdited = state.sales.find((sale) => sale.id === editingSaleId);
+  const cartonsAvailableForForm = cartonsAvailable + (saleBeingEdited?.cartons ?? 0);
+  const cartonsAvailableForType =
+    (selectedCategoryStock?.cartons ?? 0) +
+    (saleBeingEdited?.cartonType === form.cartonType ? saleBeingEdited.cartons : 0);
+
+  function resetSaleForm() {
+    setEditingSaleId(null);
+    setForm({
+      date: todayIso(),
+      cartons: 0,
+      cartonType: "A",
+      pricePerCartonCop: 19000,
+      customerName: "",
+      customerPhone: "",
+      purchaseLocation: "",
+    });
+  }
+
+  function isQueuedSale(item: OfflineQueueItem, saleId: string) {
+    return (
+      item.tableName === "sales" &&
+      typeof item.payload === "object" &&
+      item.payload !== null &&
+      "id" in item.payload &&
+      item.payload.id === saleId
+    );
+  }
+
+  function editSale(sale: FarmState["sales"][number]) {
+    setEditingSaleId(sale.id);
+    setForm({
+      date: sale.date,
+      cartons: sale.cartons,
+      cartonType: sale.cartonType ?? "A",
+      pricePerCartonCop: sale.pricePerCartonCop,
+      customerName: sale.customerName ?? "",
+      customerPhone: sale.customerPhone ?? "",
+      purchaseLocation: sale.purchaseLocation ?? "",
+    });
+    setSaleMessage("Edita los datos de la venta y guarda los cambios.");
+  }
+
+  function removeSale(sale: FarmState["sales"][number]) {
+    if (!window.confirm(`¿Eliminar la venta de ${sale.cartons} cubetas del ${sale.date}?`)) {
+      return;
+    }
+
+    updateState({
+      ...state,
+      sales: state.sales.filter((item) => item.id !== sale.id),
+      offlineQueue: state.offlineQueue.filter((item) => !isQueuedSale(item, sale.id)),
+    });
+
+    if (editingSaleId === sale.id) {
+      resetSaleForm();
+    }
+
+    setSaleMessage("Venta eliminada. El stock se actualizó.");
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (form.cartons <= 0 || form.cartons > cartonsAvailable) {
-      setSaleMessage(`Solo hay ${cartonsAvailable} cubetas de 30 disponibles para vender.`);
+    if (form.cartons <= 0 || form.cartons > cartonsAvailableForForm) {
+      setSaleMessage(`Solo hay ${cartonsAvailableForForm} cubetas de 30 disponibles para vender.`);
       return;
     }
 
@@ -1763,28 +1823,30 @@ function SalesSection({
       return;
     }
 
-    const sale = { id: makeId("sale"), ...form };
+    const sale = { id: editingSaleId ?? makeId("sale"), ...form };
     updateState({
       ...state,
-      sales: [...state.sales, sale],
-      offlineQueue: [...state.offlineQueue, queueOfflineItem("sales", sale)],
+      sales: editingSaleId
+        ? state.sales.map((item) => (item.id === editingSaleId ? sale : item))
+        : [...state.sales, sale],
+      offlineQueue: [
+        ...state.offlineQueue.filter((item) => !isQueuedSale(item, sale.id)),
+        queueOfflineItem("sales", sale),
+      ],
     });
-    setForm({
-      date: todayIso(),
-      cartons: 0,
-      cartonType: "A",
-      pricePerCartonCop: 19000,
-      customerName: "",
-      customerPhone: "",
-      purchaseLocation: "",
-    });
-    setSaleMessage("Venta guardada y descontada del stock de huevos.");
+    const wasEditing = Boolean(editingSaleId);
+    resetSaleForm();
+    setSaleMessage(
+      wasEditing
+        ? "Venta actualizada y stock recalculado."
+        : "Venta guardada y descontada del stock de huevos.",
+    );
   }
 
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <Card title="Registrar venta de huevos" icon={ShoppingCart}>
+        <Card title={editingSaleId ? "Editar venta de huevos" : "Registrar venta de huevos"} icon={ShoppingCart}>
           <form className="grid gap-4" onSubmit={submit}>
             <div className="grid grid-cols-2 gap-3">
               <div className="soft-panel p-4">
@@ -1899,10 +1961,21 @@ function SalesSection({
               </p>
             </div>
             {saleMessage ? <p className="soft-panel p-3 text-sm font-bold text-[var(--olive)]" role="status">{saleMessage}</p> : null}
-            <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
-              <ReceiptText size={20} />
-              Guardar venta y descontar stock
-            </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
+                <ReceiptText size={20} />
+                {editingSaleId ? "Guardar cambios" : "Guardar venta y descontar stock"}
+              </button>
+              {editingSaleId ? (
+                <button
+                  className="secondary-button h-14"
+                  onClick={resetSaleForm}
+                  type="button"
+                >
+                  Cancelar edición
+                </button>
+              ) : null}
+            </div>
           </form>
         </Card>
 
@@ -1933,6 +2006,28 @@ function SalesSection({
                         </span>
                       )}
                     </p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
+                      {sale.customerName} · {sale.purchaseLocation || "Sin lugar registrado"}
+                      {sale.customerPhone ? ` · ${sale.customerPhone}` : ""}
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        className="secondary-button flex h-11 items-center justify-center gap-2 text-sm"
+                        onClick={() => editSale(sale)}
+                        type="button"
+                      >
+                        <Pencil size={16} />
+                        Editar
+                      </button>
+                      <button
+                        className="terracotta-button flex h-11 items-center justify-center gap-2 text-sm"
+                        onClick={() => removeSale(sale)}
+                        type="button"
+                      >
+                        <Trash2 size={16} />
+                        Eliminar
+                      </button>
+                    </div>
                   </div>
                 );
               })}
