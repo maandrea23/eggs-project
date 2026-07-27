@@ -1899,3 +1899,294 @@ textarea.input {
     grid-template-columns: 1fr;
   }
 }
+
+/* Shared egg logging experience: phone-first, with a denser desktop layout. */
+.egg-log-capture {
+  display: grid;
+  gap: 1rem;
+}
+
+.egg-log-capture-intro {
+  display: grid;
+  gap: 0.2rem;
+  border-left: 4px solid var(--mustard);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--mustard), transparent 88%);
+  padding: 0.8rem 0.9rem;
+}
+
+.egg-log-primary-fields,
+.egg-log-extra-fields {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.egg-log-live-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 1.35rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--base-moss), transparent 92%), var(--card));
+  padding: 0.85rem;
+  text-align: center;
+}
+
+.egg-log-details {
+  border: 1px solid var(--line);
+  border-radius: 1.35rem;
+  background: color-mix(in srgb, var(--card-soft) 68%, var(--card));
+  padding: 0 1rem;
+}
+
+.egg-log-details summary {
+  display: flex;
+  min-height: 3.6rem;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  color: var(--olive);
+  font-size: 0.9rem;
+  font-weight: 900;
+  list-style: none;
+}
+
+.egg-log-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.egg-log-details summary span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.egg-log-details[open] {
+  padding-bottom: 1rem;
+}
+
+.egg-log-message {
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--clay), transparent 88%);
+  color: var(--clay);
+  padding: 0.75rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.weekly-egg-log-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.weekly-egg-log-card {
+  display: grid;
+  gap: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 1.4rem;
+  background: color-mix(in srgb, var(--card-soft) 65%, var(--card));
+  padding: 1rem;
+}
+
+.weekly-egg-log-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.weekly-egg-log-edit {
+  display: inline-flex;
+  min-height: 2.7rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.78rem;
+}
+
+.weekly-egg-log-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.weekly-egg-log-metrics span {
+  border-radius: 0.9rem;
+  background: var(--card);
+  padding: 0.55rem 0.65rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.weekly-egg-log-metrics strong {
+  display: block;
+  color: var(--foreground);
+  font-size: 1.05rem;
+}
+
+.weekly-egg-log-classification {
+  color: var(--olive);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.egg-classification-backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgb(20 34 25 / 54%);
+  backdrop-filter: blur(5px);
+}
+
+.egg-classification-modal {
+  width: 100%;
+  max-height: min(88dvh, 720px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 2rem 2rem 0 0;
+  background: var(--card);
+  box-shadow: 0 -24px 70px rgb(20 34 25 / 22%);
+  padding: 1.25rem;
+}
+
+.egg-classification-modal-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.egg-classification-modal-header h2 {
+  margin-top: 0.25rem;
+  font-size: 1.35rem;
+  font-weight: 950;
+  letter-spacing: -0.03em;
+}
+
+.egg-classification-modal-header p:last-child {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.egg-classification-lock {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.egg-classification-lock div {
+  min-width: 0;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--card-soft) 72%, var(--card));
+  padding: 0.7rem;
+}
+
+.egg-classification-lock span,
+.egg-classification-lock strong {
+  display: block;
+}
+
+.egg-classification-lock span {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 850;
+}
+
+.egg-classification-lock strong {
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+  font-size: 1.2rem;
+  font-weight: 950;
+}
+
+.egg-classification-progress {
+  height: 0.55rem;
+  overflow: hidden;
+  margin: 1rem 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--base-moss), transparent 84%);
+}
+
+.egg-classification-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--mustard), var(--base-moss));
+  transition: width 180ms ease;
+}
+
+.egg-classification-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.egg-classification-help {
+  margin-top: 0.9rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.egg-classification-actions {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+@media (min-width: 768px) {
+  .egg-log-primary-fields {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  .egg-log-live-summary,
+  .weekly-egg-log-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .egg-log-extra-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .egg-log-extra-fields > :last-child {
+    grid-column: span 2;
+  }
+
+  .weekly-egg-log-card {
+    padding: 1.15rem;
+  }
+
+  .egg-classification-backdrop {
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .egg-classification-modal {
+    width: min(760px, 100%);
+    max-height: min(88vh, 760px);
+    border-bottom: 1px solid var(--line);
+    border-radius: 2rem;
+    padding: 1.5rem;
+  }
+
+  .egg-classification-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .egg-classification-lock {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

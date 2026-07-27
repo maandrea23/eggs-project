@@ -18,6 +18,7 @@ export function createFreshFarmState(): FarmState {
     healthRecords: [],
     maintenanceTasks: [],
     investments: [],
+    notifications: [],
     offlineQueue: [],
   } as any);
 }

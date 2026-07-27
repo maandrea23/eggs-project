@@ -5,6 +5,7 @@ import { es } from "date-fns/locale";
 import {
   AlertTriangle,
   BarChart3,
+  Bell,
   Bird,
   Boxes,
   ClipboardList,
@@ -15,6 +16,7 @@ import {
   Ellipsis,
   HeartPulse,
   Home,
+  LockKeyhole,
   LogOut,
   Moon,
   Pencil,
@@ -72,6 +74,7 @@ import {
   normalizeEggSizeBreakdown,
 } from "@/lib/egg-classification";
 import { createFreshFarmState } from "@/lib/farm-state-defaults";
+import { migrateFarmState } from "@/lib/farm-state-migration";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
 import type { ThemeMode } from "@/lib/theme-mode";
 import { useThemeMode } from "@/lib/use-theme-mode";
@@ -82,7 +85,9 @@ import type {
   HealthRecord,
   OfflineQueueItem,
   EggSizeCategory,
+  FarmNotification,
   FlockArrival,
+  InventoryItem,
   MortalityRecord,
 } from "@/lib/types";
 
@@ -126,19 +131,19 @@ async function saveFarmRecord(state: FarmState) {
     const body = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(body?.error || "Farm data save failed.");
+    throw new Error(body?.error || "No se pudieron guardar los datos de la granja.");
   }
 }
 
 const tabs: { id: TabKey; label: string; icon: React.ComponentType<{ size?: number }> }[] =
   [
-    { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "eggs", label: "Eggs", icon: Egg },
-    { id: "flock", label: "Flock", icon: Bird },
-    { id: "sales", label: "Sales", icon: ShoppingCart },
-    { id: "expenses", label: "Expenses", icon: ReceiptText },
-    { id: "investment", label: "Investment", icon: PiggyBank },
-    { id: "more", label: "More", icon: Ellipsis },
+    { id: "dashboard", label: "Inicio", icon: Home },
+    { id: "eggs", label: "Huevos", icon: Egg },
+    { id: "flock", label: "Aves", icon: Bird },
+    { id: "sales", label: "Ventas", icon: ShoppingCart },
+    { id: "expenses", label: "Gastos", icon: ReceiptText },
+    { id: "investment", label: "Inversión", icon: PiggyBank },
+    { id: "more", label: "Más", icon: Ellipsis },
   ];
 
 const expenseCategories: Expense["category"][] = [
@@ -146,15 +151,39 @@ const expenseCategories: Expense["category"][] = [
   "labour", "electricity", "water", "repairs", "packaging", "cleaning",
 ];
 
+const expenseCategoryLabels: Record<Expense["category"], string> = {
+  maintenance: "Mantenimiento",
+  medicine: "Medicina",
+  vaccines: "Vacunas",
+  bedding: "Cama",
+  transport: "Transporte",
+  labour: "Mano de obra",
+  electricity: "Electricidad",
+  water: "Agua",
+  repairs: "Reparaciones",
+  packaging: "Empaques",
+  cleaning: "Limpieza",
+};
+
+const inventoryCategoryLabels: Record<InventoryItem["category"], string> = {
+  feed: "Alimento",
+  medicine: "Medicina",
+  vaccines: "Vacunas",
+  cleaning: "Limpieza",
+  packaging: "Empaques",
+};
+
 const chartMetricLabels: Record<string, string> = {
-  averageCartonPrice: "Avg carton price",
-  cartons: "Cartons",
-  eggs: "Eggs in stock",
-  orders: "Orders",
-  purchasedKg: "Purchased kg",
-  revenueCop: "Revenue",
-  spendCop: "Feed spend",
-  usedKg: "Used kg",
+  Eggs: "Huevos",
+  Cracked: "Quebrados",
+  averageCartonPrice: "Precio promedio por cubeta",
+  cartons: "Cubetas",
+  eggs: "Huevos en stock",
+  orders: "Pedidos",
+  purchasedKg: "Kg comprados",
+  revenueCop: "Ingresos",
+  spendCop: "Gasto en alimento",
+  usedKg: "Kg utilizados",
 };
 
 const eggCategoryColors: Record<EggSizeCategory, string> = {
@@ -186,6 +215,9 @@ export default function FarmApp() {
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [moreSection, setMoreSection] = useState<MoreSectionKey>("inventory");
   const [userMode, setUserMode] = useState<UserMode | null>(null);
+  const [ownerUsername, setOwnerUsername] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [ownerLoginPending, setOwnerLoginPending] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [online, setOnline] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -203,15 +235,16 @@ export default function FarmApp() {
       fetch("/api/farm-state")
         .then(async (response) => {
           if (!response.ok) {
-            throw new Error("Farm data is not ready yet.");
+            throw new Error("Los datos de la granja aún no están listos.");
           }
 
           return (await response.json()) as { state: FarmState | null };
         })
         .then(({ state: databaseState }) => {
           if (databaseState) {
-            setState(databaseState);
-            saveFarmState(databaseState);
+            const migratedDatabaseState = migrateFarmState(databaseState);
+            setState(migratedDatabaseState);
+            saveFarmState(migratedDatabaseState);
           } else {
             void saveFarmRecord(localState);
           }
@@ -242,7 +275,7 @@ export default function FarmApp() {
     }
   }, [loaded, state]);
 
-  const operatorTabs: TabKey[] = ["dashboard", "eggs", "expenses"];
+  const operatorTabs: TabKey[] = ["eggs"];
   const allowedTabs = userMode === "operator" ? operatorTabs : tabs.map((t) => t.id);
 
   const metrics = useMemo(() => calculateFarmMetrics(state), [state]);
@@ -270,8 +303,8 @@ export default function FarmApp() {
         setDatabaseStatus("local");
         setAuthMessage(
           error instanceof Error
-            ? `Farm data save paused: ${error.message}`
-            : "Farm data save paused. Changes are still saved on this device.",
+            ? `Se pausó el guardado: ${error.message}`
+            : "Se pausó el guardado. Los cambios siguen en este dispositivo.",
         );
       });
   }
@@ -289,9 +322,37 @@ export default function FarmApp() {
     };
   }
 
-  function handleOwnerLogin() {
-    setUserMode("owner");
+  async function handleOwnerLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setAuthMessage("");
+    setOwnerLoginPending(true);
+
+    try {
+      const response = await fetch("/api/auth/owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: ownerUsername,
+          password: ownerPassword,
+        }),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+
+      if (!response.ok) {
+        setAuthMessage(result?.error ?? "No fue posible iniciar sesión como propietario.");
+        return;
+      }
+
+      setUserMode("owner");
+      setActiveTab("dashboard");
+      setOwnerPassword("");
+    } catch {
+      setAuthMessage("No fue posible conectar con el inicio de sesión. Inténtalo de nuevo.");
+    } finally {
+      setOwnerLoginPending(false);
+    }
   }
 
   function handleOperatorLogin() {
@@ -312,8 +373,8 @@ export default function FarmApp() {
     } catch (error) {
       setAuthMessage(
         error instanceof Error
-          ? `Farm data save failed: ${error.message}`
-          : "Farm data save failed. Changes are still saved on this device.",
+          ? `No se pudo guardar: ${error.message}`
+          : "No se pudo guardar. Los cambios siguen en este dispositivo.",
       );
       setDatabaseStatus("local");
       setSyncing(false);
@@ -326,7 +387,7 @@ export default function FarmApp() {
         item.syncedAt ? item : { ...item, syncedAt: nowIso() },
       ),
     });
-    setAuthMessage("Waiting entries saved to the farm records.");
+    setAuthMessage("Las entradas pendientes se guardaron en los registros.");
     setDatabaseStatus("ready");
     setSyncing(false);
   }
@@ -334,7 +395,7 @@ export default function FarmApp() {
   function handleResetFarmWorkspace() {
     updateState(resetFarmState());
     setActiveTab("dashboard");
-    setAuthMessage("Farm workspace reset.");
+    setAuthMessage("El espacio de trabajo de la granja fue reiniciado.");
   }
 
   if (!loaded) {
@@ -345,14 +406,15 @@ export default function FarmApp() {
             <Egg className="text-[var(--forest)]" size={38} />
           </div>
           <p className="text-sm font-black tracking-wide text-[var(--muted)]">
-            Waking up the farm...
+            Preparando la granja...
           </p>
         </div>
       </main>
     );
   }
 
-  const effectiveTab = allowedTabs.includes(activeTab) ? activeTab : "dashboard";
+  const defaultTab: TabKey = userMode === "operator" ? "eggs" : "dashboard";
+  const effectiveTab = allowedTabs.includes(activeTab) ? activeTab : defaultTab;
 
   if (userMode === "operator" && activeTab !== effectiveTab) {
     setActiveTab(effectiveTab);
@@ -371,7 +433,7 @@ export default function FarmApp() {
                 Brianna Eggs
               </p>
               <h1 className="text-4xl font-black tracking-tight">
-                Farm manager
+                Gestor de granja
               </h1>
             </div>
           </div>
@@ -380,20 +442,57 @@ export default function FarmApp() {
           </div>
 
           <div className="floating-card p-5">
-            <div className="grid gap-3">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--cream)] text-[var(--forest)]">
+                <LockKeyhole size={20} />
+              </span>
+              <div>
+                <h2 className="text-lg font-black">Acceso de propietario</h2>
+                <p className="text-sm font-semibold text-[var(--muted)]">
+                  El acceso completo requiere tus credenciales.
+                </p>
+              </div>
+            </div>
+            <form className="grid gap-4" onSubmit={handleOwnerLogin}>
+              <Field label="Usuario">
+                <input
+                  className="soft-input"
+                  value={ownerUsername}
+                  onChange={(event) => setOwnerUsername(event.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </Field>
+              <Field label="Contraseña">
+                <input
+                  className="soft-input"
+                  type="password"
+                  value={ownerPassword}
+                  onChange={(event) => setOwnerPassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </Field>
               <button
                 className="primary-button flex h-14 items-center justify-center gap-2 px-4 text-base"
-                onClick={handleOwnerLogin}
+                disabled={ownerLoginPending}
+                type="submit"
               >
                 <Home size={20} />
-                Owner Mode — Full access
+                {ownerLoginPending ? "Ingresando..." : "Ingresar como propietario"}
               </button>
+            </form>
+            <div className="my-5 h-px bg-[var(--line)]" />
+            <div className="grid gap-3">
+              <p className="text-sm font-bold text-[var(--muted)]">
+                ¿Solo vas a recoger huevos?
+              </p>
               <button
                 className="secondary-button flex h-14 items-center justify-center gap-2 px-4 text-base"
                 onClick={handleOperatorLogin}
               >
                 <ClipboardList size={20} />
-                Operator Mode — Daily production only
+                Modo operador — Solo recoger huevos
               </button>
             </div>
           </div>
@@ -404,7 +503,11 @@ export default function FarmApp() {
 
   return (
     <main className="app-shell">
-      <FloatingSideNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      <FloatingSideNav
+        activeTab={effectiveTab}
+        setActiveTab={setActiveTab}
+        allowedTabs={allowedTabs}
+      />
       <div className="mx-auto max-w-6xl pb-28 md:ml-28 md:pb-10 lg:ml-auto">
         <header className="sticky top-0 z-20 px-4 py-4 backdrop-blur md:static md:px-6 md:pt-7">
           <div className="flex items-center justify-between gap-3">
@@ -413,20 +516,45 @@ export default function FarmApp() {
                 Brianna Eggs
               </p>
               <h1 className="mt-1 text-3xl font-black tracking-tight md:text-5xl">
-                How is the farm today?
+                ¿Cómo está la granja hoy?
               </h1>
               <p className="mt-2 hidden max-w-xl text-sm font-semibold leading-6 text-[var(--muted)] md:block">
                 {userMode === "operator"
-                  ? "Operator mode: record eggs, feed, and health daily."
-                  : "Healthy animals, steady production, calm business."}
+                  ? "Modo operador: solo recoge y clasifica huevos."
+                  : "Animales sanos, producción estable y un negocio tranquilo."}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle themeMode={themeMode} setThemeMode={setThemeMode} />
+              {userMode === "owner" ? (
+                <NotificationsInbox
+                  notifications={state.notifications ?? []}
+                  onMarkRead={(notificationId) =>
+                    updateState({
+                      ...state,
+                      notifications: (state.notifications ?? []).map((notification) =>
+                        notification.id === notificationId
+                          ? { ...notification, readAt: nowIso() }
+                          : notification,
+                      ),
+                    })
+                  }
+                  onMarkAllRead={() =>
+                    updateState({
+                      ...state,
+                      notifications: (state.notifications ?? []).map((notification) =>
+                        notification.readAt
+                          ? notification
+                          : { ...notification, readAt: nowIso() },
+                      ),
+                    })
+                  }
+                />
+              ) : null}
               <button
                 className="secondary-button grid h-12 w-12 place-items-center"
                 onClick={() => void syncOfflineQueue()}
-                title="Save waiting entries"
+                title="Guardar entradas pendientes"
               >
                 <RefreshCw
                   className={syncing ? "animate-spin" : ""}
@@ -436,7 +564,7 @@ export default function FarmApp() {
               <button
                 className="secondary-button grid h-12 w-12 place-items-center"
                 onClick={() => setUserMode(null)}
-                title="Log out"
+                title="Cerrar sesión"
               >
                 <LogOut size={19} />
               </button>
@@ -473,7 +601,6 @@ export default function FarmApp() {
             databaseStatus={databaseStatus}
             message={authMessage}
           />
-
           {effectiveTab === "dashboard" ? (
             <DashboardSection
               state={state}
@@ -583,19 +710,19 @@ function SyncBanner({
     <section className="premium-card mb-5 grid gap-2 p-3 text-sm font-bold text-[var(--muted)] md:grid-cols-3">
       <div className="flex items-center gap-2">
         {online ? <Cloud size={18} /> : <CloudOff size={18} />}
-        {online ? "Online" : "Offline mode"}
+        {online ? "En línea" : "Modo sin conexión"}
       </div>
       <div className="flex items-center gap-2">
         <ClipboardList size={18} />
-        {queueCount} entr{queueCount === 1 ? "y" : "ies"} waiting to save
+        {queueCount} {queueCount === 1 ? "entrada pendiente" : "entradas pendientes"} por guardar
       </div>
       <div className="flex items-center gap-2">
         <Settings size={18} />
         {databaseStatus === "ready"
-          ? "Farm records ready"
+          ? "Registros de la granja listos"
           : databaseStatus === "checking"
-            ? "Checking farm records"
-            : "Changes saved on this device"}
+            ? "Revisando registros de la granja"
+            : "Cambios guardados en este dispositivo"}
       </div>
       {message ? (
         <p className="soft-panel p-3 text-[var(--clay)] md:col-span-3">
@@ -603,6 +730,89 @@ function SyncBanner({
         </p>
       ) : null}
     </section>
+  );
+}
+
+function NotificationsInbox({
+  notifications,
+  onMarkRead,
+  onMarkAllRead,
+}: {
+  notifications: FarmNotification[];
+  onMarkRead: (notificationId: string) => void;
+  onMarkAllRead: () => void;
+}) {
+  const orderedNotifications = [...(notifications ?? [])]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const unreadCount = orderedNotifications.filter(
+    (notification) => !notification.readAt,
+  ).length;
+
+  return (
+    <details className="relative">
+      <summary
+        className="secondary-button relative grid h-12 w-12 cursor-pointer list-none place-items-center [&::-webkit-details-marker]:hidden"
+        title="Bandeja de notificaciones"
+        aria-label="Bandeja de notificaciones"
+      >
+        <Bell size={19} />
+        {unreadCount ? (
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--clay)] px-1 text-[10px] font-black text-white">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        ) : null}
+      </summary>
+      <section className="floating-card absolute right-0 top-14 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden p-0 shadow-2xl">
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--line)] p-4">
+          <div>
+            <h2 className="font-black">Bandeja de entrada</h2>
+            <p className="text-xs font-bold text-[var(--muted)]">
+              {unreadCount ? `${unreadCount} pendiente${unreadCount === 1 ? "" : "s"}` : "Todo al día"}
+            </p>
+          </div>
+          {unreadCount ? (
+            <button className="secondary-button h-9 px-3 text-xs" onClick={onMarkAllRead} type="button">
+              Leer todas
+            </button>
+          ) : null}
+        </header>
+        <div className="max-h-[min(60vh,32rem)] overflow-y-auto p-3">
+          {orderedNotifications.length ? (
+            <div className="grid gap-2">
+              {orderedNotifications.map((notification) => (
+                <article
+                  key={notification.id}
+                  className={`rounded-2xl p-3 ${notification.readAt ? "bg-[var(--card-soft)]" : "bg-[var(--cream)]"}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black">{notification.title}</p>
+                      <p className="mt-1 text-sm font-semibold leading-5 text-[var(--muted)]">{notification.detail}</p>
+                      <p className="mt-2 text-xs font-bold text-[var(--muted)]">
+                        {format(new Date(notification.createdAt), "d MMM, HH:mm", { locale: es })}
+                      </p>
+                    </div>
+                    {!notification.readAt ? (
+                      <button
+                        className="shrink-0 rounded-xl px-2 py-1 text-xs font-black text-[var(--olive)] hover:bg-[var(--card)]"
+                        onClick={() => onMarkRead(notification.id)}
+                        type="button"
+                      >
+                        Leída
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="p-5 text-center text-sm font-bold text-[var(--muted)]">
+              Aún no hay notificaciones.
+            </p>
+          )}
+        </div>
+      </section>
+    </details>
   );
 }
 
@@ -671,11 +881,11 @@ function DashboardSection({
               Bienvenida Brianna
             </p>
             <h2 className="mt-3 max-w-2xl text-3xl font-black tracking-tight md:text-5xl">
-              Today's eggs: {metrics.eggsToday}
+              Huevos de hoy: {metrics.eggsToday}
             </h2>
             <p className="mt-4 max-w-md text-sm font-semibold leading-6 text-[var(--muted)]">
-              {metrics.totalBirds} birds in the flock &mdash;{" "}
-              {metrics.cartonsAvailable} cartons ready.
+              {metrics.totalBirds} aves en el lote &mdash;{" "}
+              {metrics.cartonsAvailable} cubetas disponibles.
             </p>
           </div>
         </div>
@@ -685,30 +895,30 @@ function DashboardSection({
             onClick={onQuickEgg}
           >
             <Egg size={18} className="mr-2 inline" />
-            Log today&apos;s eggs
+            Registrar los huevos de hoy
           </button>
           <div className="rounded-full bg-[var(--cream)] px-5 py-3 text-sm font-black text-[var(--olive)]">
-            {metrics.totalBirds} birds
+            {metrics.totalBirds} aves
           </div>
           <div className="rounded-full bg-[var(--cream)] px-5 py-3 text-sm font-black text-[var(--olive)]">
             {metrics.totalDeaths > 0
-              ? `${Math.round((metrics.totalDeaths / metrics.totalArrivals) * 100)}% mortality`
-              : "0% mortality"}
+              ? `${Math.round((metrics.totalDeaths / metrics.totalArrivals) * 100)}% de mortalidad`
+              : "0% de mortalidad"}
           </div>
         </div>
       </section>
 
       <section className="grid gap-3 md:grid-cols-4">
-        <MetricCard icon={Egg} label="Eggs today" value={metrics.eggsToday} tone="harvest" />
-        <MetricCard icon={Bird} label="Birds" value={metrics.totalBirds} tone="moss" />
-        <MetricCard icon={ShoppingCart} label="Cartons ready" value={metrics.cartonsAvailable} tone="clay" />
-        <MetricCard icon={Package} label="Feed stock" value={`${formatNumber(metrics.feedStockKg)} kg`} tone="plum" />
+        <MetricCard icon={Egg} label="Huevos de hoy" value={metrics.eggsToday} tone="harvest" />
+        <MetricCard icon={Bird} label="Aves" value={metrics.totalBirds} tone="moss" />
+        <MetricCard icon={ShoppingCart} label="Cubetas disponibles" value={metrics.cartonsAvailable} tone="clay" />
+        <MetricCard icon={Package} label="Stock de alimento" value={`${formatNumber(metrics.feedStockKg)} kg`} tone="plum" />
       </section>
 
       <section className="grid gap-3 md:grid-cols-3">
-        <MoneyCard label="Monthly sales" value={metrics.monthlySales} tone="harvest" />
-        <MoneyCard label="Monthly expenses" value={metrics.monthlyExpenses} tone="clay" />
-        <MoneyCard label="Monthly profit" value={metrics.monthlyProfit} positive={metrics.monthlyProfit > 0} tone="plum" />
+        <MoneyCard label="Ventas del mes" value={metrics.monthlySales} tone="harvest" />
+        <MoneyCard label="Gastos del mes" value={metrics.monthlyExpenses} tone="clay" />
+        <MoneyCard label="Ganancia del mes" value={metrics.monthlyProfit} positive={metrics.monthlyProfit > 0} tone="plum" />
       </section>
 
       <section className="floating-card p-5">
@@ -716,7 +926,7 @@ function DashboardSection({
           <div className="grid h-10 w-10 place-items-center rounded-[1.1rem] bg-[var(--cream)] text-[var(--olive)]">
             <BarChart3 size={19} />
           </div>
-          <h2 className="text-lg font-black tracking-tight">Egg production</h2>
+          <h2 className="text-lg font-black tracking-tight">Producción de huevos</h2>
         </div>
         <div className="h-64">
           {chartData.length ? (
@@ -736,7 +946,7 @@ function DashboardSection({
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <ChartEmpty label="Start logging eggs to see the chart." />
+            <ChartEmpty label="Registra huevos para ver la gráfica." />
           )}
         </div>
       </section>
@@ -744,7 +954,7 @@ function DashboardSection({
       {alerts.length ? (
         <section className="grid gap-3">
           <h3 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--clay)]">
-            Alerts ({alerts.length})
+            Alertas ({alerts.length})
           </h3>
           {alerts.map((alert) => (
             <div
@@ -812,7 +1022,14 @@ function EggLoggingSection({
   });
 
   const [form, setForm] = useState(createEmptyEggLogForm);
-  const [editingLogId, setEditingLogId] = useState("");
+  const [formMessage, setFormMessage] = useState("");
+  const [classificationLogId, setClassificationLogId] = useState<string | null>(null);
+  const [classificationDraft, setClassificationDraft] = useState(
+    normalizeEggSizeBreakdown(),
+  );
+  const [classificationCrackedEggs, setClassificationCrackedEggs] = useState(0);
+  const [classificationNotes, setClassificationNotes] = useState("");
+  const [classificationMessage, setClassificationMessage] = useState("");
   const [searchWeek, setSearchWeek] = useState("");
   const weekSettings = normalizeAccountingWeekSettings(state.accountingWeekSettings);
   const [weekSettingsForm, setWeekSettingsForm] = useState(weekSettings);
@@ -827,70 +1044,101 @@ function EggLoggingSection({
   const goodEggs = Math.max(totalEggs - form.crackedEggs, 0);
   const cartons = Math.floor(goodEggs / 30);
   const loose = goodEggs % 30;
-  const categorizedEggs = getEggSizeTotal(form.sizeBreakdown);
   const stockByCategory = useMemo(
     () => getEggStockByCategoryData(state),
     [state],
   );
+  const classificationLog = classificationLogId
+    ? state.eggLogs.find((log) => log.id === classificationLogId) ?? null
+    : null;
+  const eggsAvailableForClassification = classificationLog
+    ? Math.max(classificationLog.totalEggs - classificationCrackedEggs, 0)
+    : 0;
+  const classifiedEggs = getEggSizeTotal(classificationDraft);
+  const eggsLeftToClassify = classificationLog
+    ? Math.max(eggsAvailableForClassification - classifiedEggs, 0)
+    : 0;
 
-  function updateSizeBreakdown(category: EggSizeCategory, value: number) {
-    setForm({
-      ...form,
-      sizeBreakdown: normalizeEggSizeBreakdown({
-        ...form.sizeBreakdown,
-        [category]: value,
+  function updateClassificationDraft(category: EggSizeCategory, value: number) {
+    if (!classificationLog) {
+      return;
+    }
+
+    const otherCategories = classifiedEggs - classificationDraft[category];
+    const maximumForCategory = Math.max(
+      eggsAvailableForClassification - otherCategories,
+      0,
+    );
+
+    setClassificationDraft(
+      normalizeEggSizeBreakdown({
+        ...classificationDraft,
+        [category]: Math.min(value, maximumForCategory),
       }),
-    });
+    );
   }
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const existingLog = editingLogId
-      ? state.eggLogs.find((log) => log.id === editingLogId)
-      : undefined;
+
+    if (form.feedConsumedKg <= 0) {
+      setFormMessage("Ingresa los kilogramos de alimento consumidos para guardar la recolección.");
+      return;
+    }
+
+    const existingLog = state.eggLogs.find((log) => log.date === form.date);
+
+    if (existingLog) {
+      setFormMessage(
+        "Este día ya está registrado. Selecciónalo en la búsqueda semanal para clasificar los huevos.",
+      );
+      return;
+    }
+
     const entry = {
-      id: editingLogId || makeId("egg"),
+      id: makeId("egg"),
       ...form,
       sizeBreakdown: normalizeEggSizeBreakdown(form.sizeBreakdown),
       synced: online,
-      createdAt: existingLog?.createdAt || nowIso(),
+      createdAt: nowIso(),
     };
-    const eggLogs = editingLogId
-      ? state.eggLogs.map((log) => (log.id === editingLogId ? entry : log))
-      : [...state.eggLogs.filter((log) => log.date !== form.date), entry];
+    const notification: FarmNotification = {
+      id: makeId("notification"),
+      type: "egg_collection",
+      title: "Nueva recolección de huevos",
+      detail: `${entry.date}: se registraron ${formatNumber(entry.totalEggs)} huevos y ${entry.feedConsumedKg} kg de alimento consumido.`,
+      createdAt: nowIso(),
+    };
 
     updateState({
       ...state,
-      eggLogs: eggLogs.sort((a, b) => a.date.localeCompare(b.date)),
-      offlineQueue: editingLogId
-        ? state.offlineQueue
-        : [...state.offlineQueue, queueOfflineItem("egg_logs", entry)],
+      eggLogs: [...state.eggLogs, entry].sort((a, b) =>
+        a.date.localeCompare(b.date),
+      ),
+      notifications: [notification, ...(state.notifications ?? [])].slice(0, 30),
+      offlineQueue: [...state.offlineQueue, queueOfflineItem("egg_logs", entry)],
     });
 
-    setEditingLogId("");
+    setFormMessage("");
     setForm(createEmptyEggLogForm());
   }
 
-  function editLog(logId: string) {
+  function openClassificationEditor(logId: string) {
     const log = state.eggLogs.find((item) => item.id === logId);
-    if (!log) return;
-    setEditingLogId(log.id);
-    setForm({
-      date: log.date,
-      totalEggs: log.totalEggs,
-      crackedEggs: log.crackedEggs,
-      sizeBreakdown: normalizeEggSizeBreakdown(log.sizeBreakdown),
-      feedConsumedKg: log.feedConsumedKg,
-      vitaminInWater: log.vitaminInWater,
-      vitaminInFeed: log.vitaminInFeed,
-      notes: log.notes || "",
-    });
+    if (!log) {
+      return;
+    }
+
+    setClassificationLogId(log.id);
+    setClassificationDraft(normalizeEggSizeBreakdown(log.sizeBreakdown));
+    setClassificationCrackedEggs(log.crackedEggs);
+    setClassificationNotes(log.notes ?? "");
+    setClassificationMessage("");
   }
 
   function removeLog(logId: string) {
-    if (editingLogId === logId) {
-      setEditingLogId("");
-      setForm(createEmptyEggLogForm());
+    if (classificationLogId === logId) {
+      setClassificationLogId(null);
     }
     updateState({
       ...state,
@@ -898,9 +1146,41 @@ function EggLoggingSection({
     });
   }
 
-  function cancelEdit() {
-    setEditingLogId("");
-    setForm(createEmptyEggLogForm());
+  function saveClassification() {
+    if (!classificationLog) {
+      return;
+    }
+
+    if (classifiedEggs > eggsAvailableForClassification) {
+      setClassificationMessage(
+        "La suma de clasificaciones no puede superar los huevos buenos disponibles.",
+      );
+      return;
+    }
+
+    const notification: FarmNotification = {
+      id: makeId("notification"),
+      type: "egg_classification",
+      title: "Clasificación de huevos completada",
+      detail: `${classificationLog.date}: ${formatEggSizeBreakdown(classificationDraft) || "sin cantidades clasificadas"}. Partidos: ${classificationCrackedEggs}.`,
+      createdAt: nowIso(),
+    };
+
+    updateState({
+      ...state,
+      eggLogs: state.eggLogs.map((log) =>
+        log.id === classificationLog.id
+          ? {
+              ...log,
+              crackedEggs: classificationCrackedEggs,
+              notes: classificationNotes.trim() || undefined,
+              sizeBreakdown: classificationDraft,
+            }
+          : log,
+      ),
+      notifications: [notification, ...(state.notifications ?? [])].slice(0, 30),
+    });
+    setClassificationLogId(null);
   }
 
   function saveWeekSettings(event: FormEvent) {
@@ -916,110 +1196,110 @@ function EggLoggingSection({
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card title="Daily egg logging" icon={Egg}>
-          <form className="grid gap-4" onSubmit={submit}>
-            <Field label="Date">
-              <input
-                className="input"
-                type="date"
-                value={form.date}
-                onChange={(event) =>
-                  setForm({ ...form, date: event.target.value })
-                }
-              />
-            </Field>
-            <LargeNumberField
-              label="Eggs collected"
-              hint="Total for the day"
-              value={form.totalEggs}
-              onChange={(value) => setForm({ ...form, totalEggs: value })}
-            />
-            <NumberField
-              label="Cracked or damaged"
-              value={form.crackedEggs}
-              onChange={(value) => setForm({ ...form, crackedEggs: value })}
-            />
-            <div className="egg-size-grid">
-              {EGG_SIZE_ORDER.map((category) => (
-                <EggSizeEntry
-                  key={category}
-                  category={category}
-                  value={form.sizeBreakdown[category]}
-                  onChange={(value) => updateSizeBreakdown(category, value)}
+        <Card title="Registro diario de huevos" icon={Egg}>
+          <form className="egg-log-capture" onSubmit={submit}>
+            <div className="egg-log-capture-intro">
+              <p className="text-sm font-black">Registra el día en menos de un minuto.</p>
+              <p className="text-xs font-semibold text-[var(--muted)]">
+                Agrega el total recogido ahora y clasifica los huevos desde la vista semanal.
+              </p>
+            </div>
+            <div className="egg-log-primary-fields">
+              <Field label="Fecha">
+                <input
+                  className="input"
+                  type="date"
+                  value={form.date}
+                  onChange={(event) => {
+                    setFormMessage("");
+                    setForm({ ...form, date: event.target.value });
+                  }}
                 />
-              ))}
+              </Field>
+              <LargeNumberField
+                label="Huevos recogidos"
+                hint="Total del día"
+                value={form.totalEggs}
+                onChange={(value) => setForm({ ...form, totalEggs: value })}
+              />
+              <NumberField
+                label="Quebrados o dañados"
+                value={form.crackedEggs}
+                onChange={(value) => setForm({ ...form, crackedEggs: value })}
+              />
+              <NumberField
+                label="Alimento consumido (kg)"
+                value={form.feedConsumedKg}
+                onChange={(value) => {
+                  setFormMessage("");
+                  setForm({ ...form, feedConsumedKg: value });
+                }}
+              />
             </div>
-            <NumberField
-              label="Feed consumed (kg)"
-              value={form.feedConsumedKg}
-              onChange={(value) => setForm({ ...form, feedConsumedKg: value })}
-            />
-            <Field label="Vitamin in water">
-              <input
-                className="input"
-                value={form.vitaminInWater}
-                onChange={(event) =>
-                  setForm({ ...form, vitaminInWater: event.target.value })
-                }
-                placeholder="e.g. Compleland B12"
-              />
-            </Field>
-            <Field label="Vitamin in feed">
-              <input
-                className="input"
-                value={form.vitaminInFeed}
-                onChange={(event) =>
-                  setForm({ ...form, vitaminInFeed: event.target.value })
-                }
-                placeholder="e.g. Vitaponedora"
-              />
-            </Field>
-            <Field label="Notes">
-              <textarea
-                className="input min-h-24 py-3"
-                value={form.notes}
-                onChange={(event) =>
-                  setForm({ ...form, notes: event.target.value })
-                }
-                placeholder="Optional note"
-              />
-            </Field>
-            <div className="soft-panel grid grid-cols-2 gap-2 p-3 text-center sm:grid-cols-4">
-              <MiniTotal label="Total" value={totalEggs} />
-              <MiniTotal label="Cartons" value={cartons} />
-              <MiniTotal label="Loose" value={loose} />
-              <MiniTotal label="Sized" value={categorizedEggs} />
+            <div className="egg-log-live-summary">
+              <MiniTotal label="Recogidos" value={totalEggs} />
+              <MiniTotal label="Buenos" value={goodEggs} />
+              <MiniTotal label="Cubetas" value={cartons} />
+              <MiniTotal label="Sueltos" value={loose} />
             </div>
-            <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
-              <Save size={20} />
-              {editingLogId ? "Save changes" : "Save egg log"}
-            </button>
-            {editingLogId ? (
-              <button
-                className="secondary-button flex h-14 items-center justify-center gap-2 text-base"
-                type="button"
-                onClick={cancelEdit}
-              >
-                <X size={18} />
-                Cancel edit
-              </button>
+            <details className="egg-log-details">
+              <summary>Más detalles diarios <span>Opcional</span></summary>
+              <div className="egg-log-extra-fields">
+                <Field label="Vitamina en el agua">
+                  <input
+                    className="input"
+                    value={form.vitaminInWater}
+                    onChange={(event) =>
+                      setForm({ ...form, vitaminInWater: event.target.value })
+                    }
+                    placeholder="Ej. Compleland B12"
+                  />
+                </Field>
+                <Field label="Vitamina en el alimento">
+                  <input
+                    className="input"
+                    value={form.vitaminInFeed}
+                    onChange={(event) =>
+                      setForm({ ...form, vitaminInFeed: event.target.value })
+                    }
+                    placeholder="Ej. Vitaponedora"
+                  />
+                </Field>
+                <Field label="Notas">
+                  <textarea
+                    className="input min-h-24 py-3"
+                    value={form.notes}
+                    onChange={(event) =>
+                      setForm({ ...form, notes: event.target.value })
+                    }
+                    placeholder="Nota opcional"
+                  />
+                </Field>
+              </div>
+            </details>
+            {formMessage ? (
+              <p className="egg-log-message" role="status">{formMessage}</p>
             ) : null}
+            <button className="primary-button egg-log-save-button flex h-14 items-center justify-center gap-2 text-base">
+              <Save size={20} />
+              Guardar recolección diaria
+            </button>
           </form>
         </Card>
 
-        <Card title="Eggs in stock" icon={BarChart3}>
+        <Card title="Huevos en stock" icon={BarChart3}>
           <div className="grid gap-3">
             <div className="soft-panel grid grid-cols-2 gap-2 p-3 text-center">
-              <MiniTotal label="Available" value={stockByCategory.eggsAvailable} />
-              <MiniTotal label="Cartons" value={Math.floor(stockByCategory.eggsAvailable / 30)} />
-              <MiniTotal label="Categorized" value={stockByCategory.categorizedAvailable} />
-              <MiniTotal label="Loose" value={stockByCategory.eggsAvailable % 30} />
+              <MiniTotal label="Disponibles" value={stockByCategory.eggsAvailable} />
+              <MiniTotal label="Cubetas" value={Math.floor(stockByCategory.eggsAvailable / 30)} />
+              <MiniTotal label="Clasificados" value={stockByCategory.categorizedAvailable} />
+              <MiniTotal label="Sueltos" value={stockByCategory.eggsAvailable % 30} />
             </div>
 
             {stockByCategory.uncategorizedAvailable ? (
               <p className="soft-panel p-3 text-sm font-bold text-[var(--muted)]">
-                {formatNumber(stockByCategory.uncategorizedAvailable)} available eggs
-                do not have a size category yet.
+                {formatNumber(stockByCategory.uncategorizedAvailable)} huevos disponibles
+                aún no tienen una categoría de tamaño.
               </p>
             ) : null}
 
@@ -1039,20 +1319,30 @@ function EggLoggingSection({
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <ChartEmpty label="Log egg size categories to build this chart." />
+                <ChartEmpty label="Clasifica los huevos por tamaño para ver esta gráfica." />
               )}
             </div>
 
+            <div>
+              <p className="mb-2 text-sm font-black text-[var(--olive)]">
+                Stock clasificado por tipo
+              </p>
+              <p className="mb-3 text-xs font-semibold text-[var(--muted)]">
+                Cada total se actualiza cuando clasificas el registro diario y disminuye al vender ese tipo de huevo.
+              </p>
+            </div>
             <div className="grid gap-2 text-sm font-bold text-[var(--muted)]">
               {stockByCategory.rows.map((row) => (
-                <div key={row.category} className="soft-panel flex items-center justify-between gap-3 p-3">
-                  <span className="flex items-center gap-2">
+                <div key={row.category} className="soft-panel grid grid-cols-[auto_1fr_auto] items-center gap-3 p-3">
+                  <span className="flex items-center gap-2 text-base text-[var(--foreground)]">
                     <span className="h-3 w-3 rounded-full" style={{ backgroundColor: eggCategoryColors[row.category] }} />
                     {row.category}
                   </span>
                   <span>
-                    {formatNumber(row.eggs)} eggs
-                    {row.eggs ? ` - ${row.cartons} cartons, ${row.loose} loose` : ""}
+                    Total disponible: <strong className="text-[var(--foreground)]">{formatNumber(row.eggs)} huevos</strong>
+                  </span>
+                  <span className="text-right text-xs">
+                    {row.cartons} cubetas<br />{row.loose} sueltos
                   </span>
                 </div>
               ))}
@@ -1061,10 +1351,10 @@ function EggLoggingSection({
         </Card>
       </div>
 
-      <Card title="Weekly search" icon={SearchIcon}>
+      <Card title="Búsqueda semanal" icon={SearchIcon}>
         <div className="grid gap-4">
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={saveWeekSettings}>
-            <Field label="Start date">
+            <Field label="Fecha inicial">
               <input
                 className="input"
                 type="date"
@@ -1077,7 +1367,7 @@ function EggLoggingSection({
                 }
               />
             </Field>
-            <Field label="Start week">
+            <Field label="Semana inicial">
               <input
                 className="input"
                 inputMode="numeric"
@@ -1092,20 +1382,20 @@ function EggLoggingSection({
             </Field>
             <button className="secondary-button flex h-14 items-center justify-center gap-2 self-end px-5">
               <Save size={18} />
-              Update weeks
+              Actualizar semanas
             </button>
           </form>
           <div className="soft-panel grid gap-1 p-3 text-sm font-bold text-[var(--muted)]">
             <span>{getWeekId(weekSettings.startDate, weekSettings)}</span>
             <span>{formatWeekRange(getWeekId(weekSettings.startDate, weekSettings), weekSettings)}</span>
           </div>
-          <Field label="Select week">
+          <Field label="Seleccionar semana">
             <select
               className="input"
               value={searchWeek}
               onChange={(e) => setSearchWeek(e.target.value)}
             >
-              <option value="">-- Select a week --</option>
+              <option value="">-- Selecciona una semana --</option>
               {allWeeks.map((week) => (
                 <option key={week} value={week}>
                   {week} ({formatWeekRange(week, weekSettings)})
@@ -1118,63 +1408,84 @@ function EggLoggingSection({
             <div className="grid gap-4">
               <div className="soft-panel grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
                 <div>
-                  <p className="text-xs font-bold text-[var(--muted)]">Week</p>
+                  <p className="text-xs font-bold text-[var(--muted)]">Semana</p>
                   <p className="text-lg font-black">{weeklyData.weekId}</p>
                   <p className="text-xs font-bold text-[var(--muted)]">
-                    {format(weeklyData.weekStart, "yyyy-MM-dd")} to {format(weeklyData.weekEnd, "yyyy-MM-dd")}
+                    {format(weeklyData.weekStart, "yyyy-MM-dd")} al {format(weeklyData.weekEnd, "yyyy-MM-dd")}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-[var(--muted)]">Total eggs</p>
+                  <p className="text-xs font-bold text-[var(--muted)]">Total de huevos</p>
                   <p className="text-lg font-black">{weeklyData.totalEggs}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-[var(--muted)]">Good eggs</p>
+                  <p className="text-xs font-bold text-[var(--muted)]">Huevos buenos</p>
                   <p className="text-lg font-black">{weeklyData.goodEggs}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-[var(--muted)]">Laying %</p>
+                  <p className="text-xs font-bold text-[var(--muted)]">Postura %</p>
                   <p className="text-lg font-black">{weeklyData.layingPercentage}%</p>
                 </div>
               </div>
 
               {weeklyData.vaccines.length > 0 && (
                 <div className="soft-panel p-4">
-                  <p className="text-sm font-black text-[var(--olive)] mb-2">Vaccines this week</p>
+                  <p className="text-sm font-black text-[var(--olive)] mb-2">Vacunas de esta semana</p>
                   {weeklyData.vaccines.map((v) => (
                     <p key={v.id} className="text-sm font-semibold">{v.date}: {v.notes}</p>
                   ))}
                 </div>
               )}
 
-              <DataBoxList
-                rows={weeklyData.logs.map((log) => ({
-                  id: log.id,
-                  fields: [
-                    { label: "Day", value: <span className="capitalize">{getDayName(log.date)}</span> },
-                    { label: "Date", value: log.date },
-                    { label: "Eggs", value: log.totalEggs },
-                    { label: "Cracked", value: log.crackedEggs },
-                    { label: "Feed kg", value: log.feedConsumedKg || "-" },
-                    {
-                      label: "Vitamins",
-                      value:
-                        [
-                          log.vitaminInWater ? `Water: ${log.vitaminInWater}` : "",
-                          log.vitaminInFeed ? `Feed: ${log.vitaminInFeed}` : "",
-                        ].filter(Boolean).join(" / ") || "-",
-                    },
-                  ],
-                }))}
-              />
+              <div className="weekly-egg-log-list">
+                {weeklyData.logs.map((log) => {
+                  const logClassifiedEggs = getEggSizeTotal(log.sizeBreakdown);
+                  const logUnclassifiedEggs = Math.max(
+                    log.totalEggs - logClassifiedEggs,
+                    0,
+                  );
+
+                  return (
+                    <article key={log.id} className="weekly-egg-log-card">
+                      <div className="weekly-egg-log-heading">
+                        <div>
+                          <p className="text-sm font-black capitalize">
+                            {getDayName(log.date)}
+                          </p>
+                          <p className="text-xs font-bold text-[var(--muted)]">
+                            {log.date} · {formatNumber(log.totalEggs)} recogidos
+                          </p>
+                        </div>
+                        <button
+                          className="secondary-button weekly-egg-log-edit"
+                          onClick={() => openClassificationEditor(log.id)}
+                          type="button"
+                        >
+                          <Pencil size={16} />
+                          Clasificar huevos
+                        </button>
+                      </div>
+                      <div className="weekly-egg-log-metrics">
+                        <span><strong>{formatNumber(log.totalEggs)}</strong> total</span>
+                        <span><strong>{formatNumber(log.crackedEggs)}</strong> dañados</span>
+                        <span><strong>{formatNumber(logClassifiedEggs)}</strong> clasificados</span>
+                        <span><strong>{formatNumber(logUnclassifiedEggs)}</strong> por clasificar</span>
+                      </div>
+                      <p className="weekly-egg-log-classification">
+                        {formatEggSizeBreakdown(log.sizeBreakdown) || "Aún sin clasificar"}
+                      </p>
+                    </article>
+                  );
+                })}
+              </div>
 
               <div className="soft-panel p-4">
-                <p className="text-sm font-black text-[var(--olive)] mb-2">Summary</p>
+                <p className="text-sm font-black text-[var(--olive)] mb-2">Resumen</p>
                 <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-                  <div>Avg eggs/day: <strong>{weeklyData.avgDailyEggs}</strong></div>
-                  <div>Feed consumed: <strong>{weeklyData.feedConsumed} kg</strong></div>
-                  <div>Revenue: <strong>{formatCop(weeklyData.totalRevenue)}</strong></div>
-                  <div>Laying: <strong>{weeklyData.layingPercentage}%</strong></div>
+                  <div>Promedio de huevos/día: <strong>{weeklyData.avgDailyEggs}</strong></div>
+                  <div>Alimento consumido: <strong>{weeklyData.feedConsumed} kg</strong></div>
+                  <div>Ingresos: <strong>{formatCop(weeklyData.totalRevenue)}</strong></div>
+                  <div>Postura: <strong>{weeklyData.layingPercentage}%</strong></div>
                 </div>
               </div>
             </div>
@@ -1182,7 +1493,7 @@ function EggLoggingSection({
         </div>
       </Card>
 
-      <Card title="Recent egg logs" icon={ClipboardList}>
+      <Card title="Registros recientes de huevos" icon={ClipboardList}>
         <div className="grid gap-3">
           {state.eggLogs
             .slice(-7)
@@ -1192,12 +1503,12 @@ function EggLoggingSection({
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-black">{log.date} - <span className="capitalize">{getDayName(log.date)}</span></p>
                   <p className="text-sm font-bold text-[var(--muted)]">
-                    {log.synced ? "Saved" : "Offline"}
+                    {log.synced ? "Guardado" : "Sin conexión"}
                   </p>
                 </div>
                 <p className="mt-2 text-sm text-[var(--muted)]">
-                  Eggs: {log.totalEggs} • Cracked: {log.crackedEggs}
-                  {log.feedConsumedKg > 0 && ` • Feed: ${log.feedConsumedKg}kg`}
+                  Huevos: {log.totalEggs} • Quebrados: {log.crackedEggs}
+                  {log.feedConsumedKg > 0 && ` • Alimento: ${log.feedConsumedKg}kg`}
                 </p>
                 {formatEggSizeBreakdown(log.sizeBreakdown) ? (
                   <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
@@ -1215,10 +1526,10 @@ function EggLoggingSection({
                   <button
                     className="secondary-button flex h-11 items-center justify-center gap-2 text-sm"
                     type="button"
-                    onClick={() => editLog(log.id)}
+                    onClick={() => openClassificationEditor(log.id)}
                   >
                     <Pencil size={16} />
-                    Edit
+                    Clasificar
                   </button>
                   <button
                     className="terracotta-button flex h-11 items-center justify-center gap-2 text-sm"
@@ -1226,13 +1537,135 @@ function EggLoggingSection({
                     onClick={() => removeLog(log.id)}
                   >
                     <Trash2 size={16} />
-                    Delete
+                    Eliminar
                   </button>
                 </div>
               </div>
             ))}
         </div>
       </Card>
+
+      {classificationLog ? (
+        <div
+          className="egg-classification-backdrop"
+          onMouseDown={() => setClassificationLogId(null)}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="classification-editor-title"
+            aria-modal="true"
+            className="egg-classification-modal"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header className="egg-classification-modal-header">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-[var(--clay)]">
+                  {format(new Date(`${classificationLog.date}T12:00:00`), "EEEE, MMM d", { locale: es })}
+                </p>
+                <h2 id="classification-editor-title">Clasificar huevos recogidos</h2>
+                <p>Actualiza solo los tamaños. El total recogido está bloqueado.</p>
+              </div>
+              <button
+                aria-label="Cerrar el editor de clasificación"
+                className="secondary-button grid h-11 w-11 place-items-center"
+                onClick={() => setClassificationLogId(null)}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="egg-classification-lock">
+              <div>
+                <span>Total recogido</span>
+                <strong>{formatNumber(classificationLog.totalEggs)}</strong>
+              </div>
+              <div>
+                <span>Disponibles para clasificar</span>
+                <strong>{formatNumber(eggsAvailableForClassification)}</strong>
+              </div>
+              <div>
+                <span>Clasificados</span>
+                <strong>{formatNumber(classifiedEggs)}</strong>
+              </div>
+              <div>
+                <span>Por clasificar</span>
+                <strong>{formatNumber(eggsLeftToClassify)}</strong>
+              </div>
+            </div>
+            <div
+              aria-label={`${classifiedEggs} de ${eggsAvailableForClassification} huevos clasificados`}
+              className="egg-classification-progress"
+              role="progressbar"
+              aria-valuemax={eggsAvailableForClassification}
+              aria-valuemin={0}
+              aria-valuenow={classifiedEggs}
+            >
+              <span
+                style={{
+                  width: `${eggsAvailableForClassification ? Math.min((classifiedEggs / eggsAvailableForClassification) * 100, 100) : 0}%`,
+                }}
+              />
+            </div>
+
+            <div className="egg-classification-grid">
+              {EGG_SIZE_ORDER.map((category) => (
+                <EggSizeEntry
+                  key={category}
+                  category={category}
+                  value={classificationDraft[category]}
+                  onChange={(value) => updateClassificationDraft(category, value)}
+                />
+              ))}
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <NumberField
+                label="Huevos partidos o dañados"
+                value={classificationCrackedEggs}
+                onChange={(value) => {
+                  setClassificationMessage("");
+                  setClassificationCrackedEggs(
+                    Math.min(value, classificationLog.totalEggs),
+                  );
+                }}
+              />
+              <Field label="Nota de la clasificación">
+                <textarea
+                  className="input min-h-24 py-3"
+                  value={classificationNotes}
+                  onChange={(event) => setClassificationNotes(event.target.value)}
+                  placeholder="Ej. Se encontraron huevos sucios o partidos."
+                />
+              </Field>
+            </div>
+            <p className="egg-classification-help">
+              Elige entre C, B, A, AA, AAA y Jumbo. La clasificación no puede superar los huevos buenos disponibles.
+            </p>
+            {classificationMessage ? (
+              <p className="egg-log-message" role="status">{classificationMessage}</p>
+            ) : null}
+
+            <footer className="egg-classification-actions">
+              <button
+                className="secondary-button h-12"
+                onClick={() => setClassificationLogId(null)}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="primary-button flex h-12 items-center justify-center gap-2"
+                onClick={saveClassification}
+                type="button"
+              >
+                <Save size={18} />
+                Guardar clasificación
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1268,13 +1701,18 @@ function SalesSection({
     cartonType: EggSizeCategory;
     pricePerCartonCop: number;
     customerName: string;
+    customerPhone: string;
+    purchaseLocation: string;
   }>({
     date: todayIso(),
     cartons: 0,
     cartonType: "A",
     pricePerCartonCop: 19000,
     customerName: "",
+    customerPhone: "",
+    purchaseLocation: "",
   });
+  const [saleMessage, setSaleMessage] = useState("");
   const selectedWeekId = getWeekId(form.date, state.accountingWeekSettings);
   const selectedWeekCost = useMemo(
     () => getWeeklyEggCostBreakdown(state, selectedWeekId),
@@ -1286,9 +1724,31 @@ function SalesSection({
   const estimatedSaleCost = selectedWeekCost.costPerEggCop * eggsSold;
   const estimatedSaleMargin = total - estimatedSaleCost;
   const costPerEggByWeek = useMemo(() => getCostPerEggByWeek(state), [state]);
+  const stockByCategory = useMemo(() => getEggStockByCategoryData(state), [state]);
+  const selectedCategoryStock = stockByCategory.rows.find(
+    (row) => row.category === form.cartonType,
+  );
+  const cartonsAvailableForType = selectedCategoryStock?.cartons ?? 0;
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (form.cartons <= 0 || form.cartons > cartonsAvailable) {
+      setSaleMessage(`Solo hay ${cartonsAvailable} cubetas de 30 disponibles para vender.`);
+      return;
+    }
+
+    if (form.cartons > cartonsAvailableForType) {
+      setSaleMessage(
+        `Solo hay ${cartonsAvailableForType} cubetas de huevo tipo ${form.cartonType} disponibles. Clasifica más huevos para aumentar este stock.`,
+      );
+      return;
+    }
+
+    if (!form.customerName.trim() || !form.purchaseLocation.trim()) {
+      setSaleMessage("Registra el nombre del cliente y el lugar de compra.");
+      return;
+    }
+
     const sale = { id: makeId("sale"), ...form };
     updateState({
       ...state,
@@ -1301,27 +1761,30 @@ function SalesSection({
       cartonType: "A",
       pricePerCartonCop: 19000,
       customerName: "",
+      customerPhone: "",
+      purchaseLocation: "",
     });
+    setSaleMessage("Venta guardada y descontada del stock de huevos.");
   }
 
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <Card title="Record egg sale" icon={ShoppingCart}>
+        <Card title="Registrar venta de huevos" icon={ShoppingCart}>
           <form className="grid gap-4" onSubmit={submit}>
             <div className="grid grid-cols-2 gap-3">
               <div className="soft-panel p-4">
-                <p className="text-sm font-bold text-[var(--olive)]">Cartons ready</p>
+                <p className="text-sm font-bold text-[var(--olive)]">Cubetas disponibles</p>
                 <p className="mt-1 text-4xl font-black">{cartonsAvailable}</p>
-                <p className="text-sm font-semibold text-[var(--muted)]">cartons of 30</p>
+                <p className="text-sm font-semibold text-[var(--muted)]">cubetas de 30 huevos</p>
               </div>
               <div className="soft-panel p-4">
-                <p className="text-sm font-bold text-[var(--olive)]">Today revenue</p>
+                <p className="text-sm font-bold text-[var(--olive)]">Valor de esta venta</p>
                 <p className="mt-1 break-words text-2xl font-black">{formatCop(total)}</p>
-                <p className="text-sm font-semibold text-[var(--muted)]">current sale</p>
+                <p className="text-sm font-semibold text-[var(--muted)]">venta actual</p>
               </div>
             </div>
-            <Field label="Sale date">
+            <Field label="Fecha de venta">
               <input
                 className="input"
                 type="date"
@@ -1330,7 +1793,7 @@ function SalesSection({
               />
             </Field>
             <NumberField
-              label="Cartons sold"
+              label="Cubetas vendidas"
               value={form.cartons}
               onChange={(value) => setForm({ ...form, cartons: value })}
             />
@@ -1347,11 +1810,11 @@ function SalesSection({
               onClear={() => setForm({ ...form, cartons: 0 })}
             />
             <NumberField
-              label="Price per carton COP"
+              label="Precio por cubeta (COP)"
               value={form.pricePerCartonCop}
               onChange={(value) => setForm({ ...form, pricePerCartonCop: value })}
             />
-            <Field label="Carton type for customer log">
+            <Field label="Tipo de huevo vendido">
               <select
                 className="input"
                 value={form.cartonType}
@@ -1366,45 +1829,70 @@ function SalesSection({
                 ))}
               </select>
             </Field>
-            <Field label="Customer name for customer log">
+            <div className="soft-panel p-3 text-sm font-bold text-[var(--olive)]">
+              Stock de tipo {form.cartonType}: {formatNumber(selectedCategoryStock?.eggs ?? 0)} huevos disponibles
+              <span className="ml-2 text-[var(--muted)]">({cartonsAvailableForType} cubetas y {selectedCategoryStock?.loose ?? 0} sueltos)</span>
+            </div>
+            <Field label="Nombre del cliente">
               <input
                 className="input"
                 value={form.customerName}
                 onChange={(event) => setForm({ ...form, customerName: event.target.value })}
-                placeholder="e.g. Cliente A"
+                placeholder="Ej. Cliente A"
               />
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Teléfono (opcional)">
+                <input
+                  className="input"
+                  inputMode="tel"
+                  value={form.customerPhone}
+                  onChange={(event) => setForm({ ...form, customerPhone: event.target.value })}
+                  placeholder="Ej. 300 000 0000"
+                />
+              </Field>
+              <Field label="Lugar de compra">
+                <input
+                  className="input"
+                  value={form.purchaseLocation}
+                  onChange={(event) => setForm({ ...form, purchaseLocation: event.target.value })}
+                  placeholder="Tienda, finca, domicilio..."
+                  required
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="soft-panel p-4">
-                <p className="text-sm font-bold text-[var(--muted)]">Sale total</p>
+                <p className="text-sm font-bold text-[var(--muted)]">Total de la venta</p>
                 <p className="text-3xl font-black">{formatCop(total)}</p>
                 <p className="text-sm font-semibold text-[var(--muted)]">
-                  {formatCop(salePricePerEgg)}/egg
+                  {formatCop(salePricePerEgg)}/huevo
                 </p>
               </div>
               <div className="soft-panel p-4">
-                <p className="text-sm font-bold text-[var(--muted)]">Weekly cost</p>
-                <p className="text-3xl font-black">{formatCop(selectedWeekCost.costPerEggCop)}/egg</p>
+                <p className="text-sm font-bold text-[var(--muted)]">Costo semanal</p>
+                <p className="text-3xl font-black">{formatCop(selectedWeekCost.costPerEggCop)}/huevo</p>
                 <p className="text-sm font-semibold text-[var(--muted)]">
-                  {formatCop(selectedWeekCost.costPerCartonCop)}/carton cost
+                  {formatCop(selectedWeekCost.costPerCartonCop)}/cubeta
                 </p>
               </div>
             </div>
             <div className="soft-panel p-4">
-              <p className="text-sm font-bold text-[var(--muted)]">Estimated margin on this sale</p>
+              <p className="text-sm font-bold text-[var(--muted)]">Ganancia estimada de esta venta</p>
               <p className="text-3xl font-black">{formatCop(estimatedSaleMargin)}</p>
               <p className="text-sm font-semibold text-[var(--muted)]">
-                {formatNumber(eggsSold)} eggs sold • {formatCop(estimatedSaleCost)} estimated cost
+                {formatNumber(eggsSold)} huevos vendidos • {formatCop(estimatedSaleCost)} de costo estimado
               </p>
             </div>
+            {saleMessage ? <p className="soft-panel p-3 text-sm font-bold text-[var(--olive)]" role="status">{saleMessage}</p> : null}
             <button className="primary-button flex h-14 items-center justify-center gap-2 text-base">
               <ReceiptText size={20} />
-              Save sale
+              Guardar venta y descontar stock
             </button>
           </form>
         </Card>
 
-        <Card title="Recent egg sales" icon={Wallet}>
+        <Card title="Ventas recientes de huevos" icon={Wallet}>
           <div className="grid gap-3">
             {state.sales
               .slice()
@@ -1419,15 +1907,15 @@ function SalesSection({
                   <div key={sale.id} className="soft-panel p-4">
                     <div className="flex items-center justify-between">
                       <p className="font-black">
-                        {sale.cartons} cartons • {formatNumber(saleEggs)} eggs
+                        {sale.cartons} cubetas • {formatNumber(saleEggs)} huevos
                       </p>
                       <p className="font-black">{formatCop(saleTotal)}</p>
                     </div>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      {sale.date} • Sold: {formatCop(sale.pricePerCartonCop / 30)}/egg
+                      {sale.date} • Vendido: {formatCop(sale.pricePerCartonCop / 30)}/huevo
                       {costPerEgg !== undefined && (
                         <span className="ml-2">
-                          • Cost: {formatCop(costPerEgg)}/egg • Margin: {formatCop(saleTotal - estimatedCost)}
+                          • Costo: {formatCop(costPerEgg)}/huevo • Ganancia: {formatCop(saleTotal - estimatedCost)}
                         </span>
                       )}
                     </p>
@@ -1438,19 +1926,19 @@ function SalesSection({
         </Card>
       </div>
 
-      <Card title="Egg sales and cost" icon={BarChart3}>
+      <Card title="Ventas y costo de huevos" icon={BarChart3}>
         <DataBoxList
-          emptyLabel="No sales recorded"
+          emptyLabel="No hay ventas registradas"
           rows={state.sales.slice().reverse().map((sale) => ({
             id: sale.id,
             fields: [
-              { label: "Date", value: sale.date },
-              { label: "Cartons sold", value: sale.cartons },
-              { label: "Egg quantity", value: formatNumber(sale.cartons * 30) },
-              { label: "Price/carton", value: formatCop(sale.pricePerCartonCop) },
-              { label: "Sold/egg", value: formatCop(sale.pricePerCartonCop / 30) },
+              { label: "Fecha", value: sale.date },
+              { label: "Cubetas vendidas", value: sale.cartons },
+              { label: "Cantidad de huevos", value: formatNumber(sale.cartons * 30) },
+              { label: "Precio/cubeta", value: formatCop(sale.pricePerCartonCop) },
+              { label: "Venta/huevo", value: formatCop(sale.pricePerCartonCop / 30) },
               {
-                label: "Week cost/egg",
+                label: "Costo semanal/huevo",
                 value: costPerEggByWeek[getWeekId(sale.date, state.accountingWeekSettings)] !== undefined
                   ? formatCop(costPerEggByWeek[getWeekId(sale.date, state.accountingWeekSettings)])
                   : "-",
@@ -1461,9 +1949,9 @@ function SalesSection({
         />
       </Card>
 
-      <Card title="Customer purchase log" icon={ClipboardList}>
+      <Card title="Registro de compras de clientes" icon={ClipboardList}>
         <DataBoxList
-          emptyLabel="No customer names recorded"
+          emptyLabel="No hay clientes registrados"
           rows={state.sales
             .filter((sale) => sale.customerName?.trim())
             .slice()
@@ -1471,16 +1959,18 @@ function SalesSection({
             .map((sale) => ({
               id: sale.id,
               fields: [
-                { label: "Date", value: sale.date },
-                { label: "Customer", value: sale.customerName },
-                { label: "Carton type", value: sale.cartonType || "-" },
+                { label: "Fecha", value: sale.date },
+                { label: "Cliente", value: sale.customerName },
+                { label: "Teléfono", value: sale.customerPhone || "No registrado" },
+                { label: "Lugar de compra", value: sale.purchaseLocation || "No registrado" },
+                { label: "Tipo de huevo", value: sale.cartonType || "-" },
               ],
             }))}
         />
       </Card>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card title="Sales revenue trend" icon={BarChart3}>
+        <Card title="Tendencia de ventas" icon={BarChart3}>
           <div className="h-64">
             {chartData.length ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -1493,12 +1983,12 @@ function SalesSection({
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <ChartEmpty label="No sales recorded yet." />
+              <ChartEmpty label="Aún no hay ventas registradas." />
             )}
           </div>
         </Card>
 
-        <Card title="Cartons sold trend" icon={ShoppingCart}>
+        <Card title="Tendencia de cubetas vendidas" icon={ShoppingCart}>
           <div className="h-64">
             {chartData.length ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -1511,7 +2001,7 @@ function SalesSection({
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <ChartEmpty label="No carton sales to chart yet." />
+              <ChartEmpty label="Aún no hay cubetas vendidas para mostrar." />
             )}
           </div>
         </Card>
@@ -1578,85 +2068,85 @@ function FlockSection({
           <Bird className="text-[var(--forest)]" size={32} />
           <div>
             <p className="text-sm font-black uppercase tracking-[0.18em] text-[var(--clay)]">
-              Flock summary
+              Resumen del lote
             </p>
-            <h2 className="text-3xl font-black tracking-tight">{currentBirds} birds</h2>
+            <h2 className="text-3xl font-black tracking-tight">{currentBirds} aves</h2>
             <p className="text-sm text-[var(--muted)]">
-              {totalArrivals} arrived • {totalDeaths} deaths • {mortalityPct}% mortality
+              {totalArrivals} llegadas • {totalDeaths} muertes • {mortalityPct}% de mortalidad
             </p>
           </div>
         </div>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Record arrival" icon={Plus}>
+        <Card title="Registrar llegada" icon={Plus}>
           <form className="grid gap-4" onSubmit={submitArrival}>
-            <Field label="Arrival date">
+            <Field label="Fecha de llegada">
               <input className="input" type="date" value={arrival.date}
                 onChange={(e) => setArrival({ ...arrival, date: e.target.value })} />
             </Field>
-            <NumberField label="Quantity" value={arrival.quantity}
+            <NumberField label="Cantidad" value={arrival.quantity}
               onChange={(q) => setArrival({ ...arrival, quantity: q })} />
-            <Field label="Breed">
+            <Field label="Raza">
               <input className="input" value={arrival.breed}
                 onChange={(e) => setArrival({ ...arrival, breed: e.target.value })}
-                placeholder="e.g. Ponedoras" />
+                placeholder="Ej. Ponedoras" />
             </Field>
-            <Field label="Notes">
+            <Field label="Notas">
               <input className="input" value={arrival.notes}
                 onChange={(e) => setArrival({ ...arrival, notes: e.target.value })} />
             </Field>
-            <button className="primary-button h-13">Save arrival</button>
+            <button className="primary-button h-13">Guardar llegada</button>
           </form>
         </Card>
 
-        <Card title="Record mortality" icon={ClipboardList}>
+        <Card title="Registrar mortalidad" icon={ClipboardList}>
           <form className="grid gap-4" onSubmit={submitMortality}>
-            <Field label="Date">
+            <Field label="Fecha">
               <input className="input" type="date" value={mortality.date}
                 onChange={(e) => setMortality({ ...mortality, date: e.target.value })} />
             </Field>
-            <NumberField label="Deaths" value={mortality.deaths}
+            <NumberField label="Muertes" value={mortality.deaths}
               onChange={(d) => setMortality({ ...mortality, deaths: d })} />
-            <Field label="Cause">
+            <Field label="Causa">
               <input className="input" value={mortality.cause}
                 onChange={(e) => setMortality({ ...mortality, cause: e.target.value })}
-                placeholder="e.g. Disease, accident" />
+                placeholder="Ej. Enfermedad, accidente" />
             </Field>
-            <Field label="Notes">
+            <Field label="Notas">
               <input className="input" value={mortality.notes}
                 onChange={(e) => setMortality({ ...mortality, notes: e.target.value })} />
             </Field>
-            <button className="primary-button h-13">Record</button>
+            <button className="primary-button h-13">Registrar</button>
           </form>
         </Card>
       </div>
 
-      <Card title="Mortality log" icon={ClipboardList}>
+      <Card title="Registro de mortalidad" icon={ClipboardList}>
         <DataBoxList
-          emptyLabel="No mortality recorded"
+          emptyLabel="No hay mortalidad registrada"
           rows={state.mortalityRecords.slice().reverse().map((m) => ({
             id: m.id,
             fields: [
-              { label: "Date", value: m.date },
-              { label: "Deaths", value: <span className="text-red-600">{m.deaths}</span> },
-              { label: "Cause", value: m.cause || "-" },
-              { label: "Notes", value: m.notes || "-" },
+              { label: "Fecha", value: m.date },
+              { label: "Muertes", value: <span className="text-red-600">{m.deaths}</span> },
+              { label: "Causa", value: m.cause || "-" },
+              { label: "Notas", value: m.notes || "-" },
             ],
           }))}
         />
       </Card>
 
-      <Card title="Arrivals log" icon={Bird}>
+      <Card title="Registro de llegadas" icon={Bird}>
         <DataBoxList
-          emptyLabel="No arrivals recorded"
+          emptyLabel="No hay llegadas registradas"
           rows={state.flockArrivals.slice().reverse().map((a) => ({
             id: a.id,
             fields: [
-              { label: "Date", value: a.date },
-              { label: "Quantity", value: a.quantity },
-              { label: "Breed", value: a.breed || "-" },
-              { label: "Notes", value: a.notes || "-" },
+              { label: "Fecha", value: a.date },
+              { label: "Cantidad", value: a.quantity },
+              { label: "Raza", value: a.breed || "-" },
+              { label: "Notas", value: a.notes || "-" },
             ],
           }))}
         />
@@ -1683,7 +2173,7 @@ function FeedExpenseSection({
 }) {
   const [purchase, setPurchase] = useState({
     date: todayIso(),
-    feedType: "Layer pellet",
+    feedType: "Concentrado para ponedoras",
     quantityKg: 0,
     priceCop: 0,
     supplier: "",
@@ -1712,7 +2202,7 @@ function FeedExpenseSection({
           : item,
       ),
     });
-    setPurchase({ date: todayIso(), feedType: "Layer pellet", quantityKg: 0, priceCop: 0, supplier: "" });
+    setPurchase({ date: todayIso(), feedType: "Concentrado para ponedoras", quantityKg: 0, priceCop: 0, supplier: "" });
   }
 
   function submitUsage(event: FormEvent) {
@@ -1745,78 +2235,78 @@ function FeedExpenseSection({
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 xl:grid-cols-3">
-        <Card title="Feed purchase" icon={Sprout}>
+        <Card title="Compra de alimento" icon={Sprout}>
           <form className="grid gap-4" onSubmit={submitPurchase}>
-            <Field label="Date">
+            <Field label="Fecha">
               <input className="input" type="date" value={purchase.date}
                 onChange={(e) => setPurchase({ ...purchase, date: e.target.value })} />
             </Field>
-            <Field label="Feed type">
+            <Field label="Tipo de alimento">
               <input className="input" value={purchase.feedType}
                 onChange={(e) => setPurchase({ ...purchase, feedType: e.target.value })} />
             </Field>
-            <NumberField label="Quantity kg" value={purchase.quantityKg}
+            <NumberField label="Cantidad en kg" value={purchase.quantityKg}
               onChange={(q) => setPurchase({ ...purchase, quantityKg: q })} />
-            <NumberField label="Total price COP" value={purchase.priceCop}
+            <NumberField label="Precio total (COP)" value={purchase.priceCop}
               onChange={(p) => setPurchase({ ...purchase, priceCop: p })} />
-            <Field label="Supplier">
+            <Field label="Proveedor">
               <input className="input" value={purchase.supplier}
                 onChange={(e) => setPurchase({ ...purchase, supplier: e.target.value })} />
             </Field>
-            <button className="primary-button h-13">Save purchase</button>
+            <button className="primary-button h-13">Guardar compra</button>
           </form>
         </Card>
 
-        <Card title="Feed usage" icon={Package}>
+        <Card title="Uso de alimento" icon={Package}>
           <form className="grid gap-4" onSubmit={submitUsage}>
             <div className="rounded-3xl bg-[#eef5ef] p-4">
-              <p className="text-sm font-bold text-[#496150]">Feed stock</p>
+              <p className="text-sm font-bold text-[#496150]">Stock de alimento</p>
               <p className="text-4xl font-black">{formatNumber(metrics.feedStockKg)} kg</p>
               <p className="text-sm font-semibold text-[#496150]">
-                About {metrics.feedDaysRemaining} days remaining
+                Aproximadamente {metrics.feedDaysRemaining} días disponibles
               </p>
             </div>
-            <Field label="Date">
+            <Field label="Fecha">
               <input className="input" type="date" value={usage.date}
                 onChange={(e) => setUsage({ ...usage, date: e.target.value })} />
             </Field>
-            <NumberField label="Quantity used kg" value={usage.quantityKg}
+            <NumberField label="Cantidad usada en kg" value={usage.quantityKg}
               onChange={(q) => setUsage({ ...usage, quantityKg: q })} />
-            <Field label="Notes">
+            <Field label="Notas">
               <input className="input" value={usage.notes}
                 onChange={(e) => setUsage({ ...usage, notes: e.target.value })} />
             </Field>
-            <button className="primary-button h-13">Save usage</button>
+            <button className="primary-button h-13">Guardar uso</button>
           </form>
         </Card>
 
-        <Card title="Other expense" icon={ReceiptText}>
+        <Card title="Otro gasto" icon={ReceiptText}>
           <form className="grid gap-4" onSubmit={submitExpense}>
-            <Field label="Date">
+            <Field label="Fecha">
               <input className="input" type="date" value={expense.date}
                 onChange={(e) => setExpense({ ...expense, date: e.target.value })} />
             </Field>
-            <Field label="Category">
+            <Field label="Categoría">
               <select className="input" value={expense.category}
                 onChange={(e) => setExpense({ ...expense, category: e.target.value as Expense["category"] })}>
                 {expenseCategories.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
+                  <option key={cat} value={cat}>{expenseCategoryLabels[cat]}</option>
                 ))}
               </select>
             </Field>
-            <NumberField label="Amount COP" value={expense.amountCop}
+            <NumberField label="Valor (COP)" value={expense.amountCop}
               onChange={(a) => setExpense({ ...expense, amountCop: a })} />
-            <Field label="Description">
+            <Field label="Descripción">
               <input className="input" value={expense.description}
                 onChange={(e) => setExpense({ ...expense, description: e.target.value })} />
             </Field>
-            <button className="primary-button h-13">Save expense</button>
+            <button className="primary-button h-13">Guardar gasto</button>
           </form>
         </Card>
       </div>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card title="Feed kg movement" icon={BarChart3}>
+        <Card title="Movimiento de alimento (kg)" icon={BarChart3}>
           <div className="h-64">
             {chartData.length ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -1830,12 +2320,12 @@ function FeedExpenseSection({
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <ChartEmpty label="No feed movement recorded yet." />
+              <ChartEmpty label="Aún no hay movimientos de alimento registrados." />
             )}
           </div>
         </Card>
 
-        <Card title="Feed spend trend" icon={Wallet}>
+        <Card title="Tendencia de gasto en alimento" icon={Wallet}>
           <div className="h-64">
             {chartData.length ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -1848,7 +2338,7 @@ function FeedExpenseSection({
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <ChartEmpty label="No feed spending to chart yet." />
+              <ChartEmpty label="Aún no hay gastos de alimento para mostrar." />
             )}
           </div>
         </Card>
@@ -1865,7 +2355,7 @@ function InventorySection({
   updateState: (state: FarmState) => void;
 }) {
   return (
-    <Card title="Inventory" icon={Boxes}>
+    <Card title="Inventario" icon={Boxes}>
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {state.inventoryItems.map((item) => {
           const low = item.quantity <= item.reorderLevel;
@@ -1877,19 +2367,19 @@ function InventorySection({
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-black">{item.name}</p>
-                  <p className="text-sm font-semibold capitalize text-[#66736b]">{item.category}</p>
+                  <p className="text-sm font-semibold text-[#66736b]">{inventoryCategoryLabels[item.category]}</p>
                 </div>
                 {low ? <AlertTriangle className="text-[#bf6b16]" /> : null}
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <NumberField label={`Qty ${item.unit}`} value={item.quantity}
+                <NumberField label={`Cantidad ${item.unit}`} value={item.quantity}
                   onChange={(quantity) => updateState({
                     ...state,
                     inventoryItems: state.inventoryItems.map((current) =>
                       current.id === item.id ? { ...current, quantity } : current,
                     ),
                   })} />
-                <NumberField label="Low alert" value={item.reorderLevel}
+                <NumberField label="Alerta de mínimo" value={item.reorderLevel}
                   onChange={(reorderLevel) => updateState({
                     ...state,
                     inventoryItems: state.inventoryItems.map((current) =>
@@ -1949,63 +2439,63 @@ function HealthSection({
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="Health record" icon={HeartPulse}>
+      <Card title="Registro de salud" icon={HeartPulse}>
         <form className="grid gap-4" onSubmit={submitHealth}>
-          <Field label="Date">
+          <Field label="Fecha">
             <input className="input" type="date" value={health.date}
               onChange={(e) => setHealth({ ...health, date: e.target.value })} />
           </Field>
-          <Field label="Type">
+          <Field label="Tipo">
             <select className="input" value={health.type}
               onChange={(e) => setHealth({ ...health, type: e.target.value as HealthRecord["type"] })}>
-              <option value="sick">Sick birds</option>
-              <option value="death">Deaths</option>
-              <option value="vaccination">Vaccination</option>
-              <option value="medicine">Medicine use</option>
+              <option value="sick">Aves enfermas</option>
+              <option value="death">Muertes</option>
+              <option value="vaccination">Vacunación</option>
+              <option value="medicine">Uso de medicina</option>
             </select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <NumberField label="Sick birds" value={health.sickBirds}
+            <NumberField label="Aves enfermas" value={health.sickBirds}
               onChange={(s) => setHealth({ ...health, sickBirds: s })} />
-            <NumberField label="Deaths" value={health.deaths}
+            <NumberField label="Muertes" value={health.deaths}
               onChange={(d) => setHealth({ ...health, deaths: d })} />
           </div>
-          <Field label="Notes">
+          <Field label="Notas">
             <textarea className="input min-h-24 py-3" value={health.notes}
               onChange={(e) => setHealth({ ...health, notes: e.target.value })} />
           </Field>
-          <button className="primary-button h-13">Save health note</button>
+          <button className="primary-button h-13">Guardar nota de salud</button>
         </form>
       </Card>
 
       <div className="grid gap-4">
-        <Card title="Reminder" icon={Settings}>
+        <Card title="Recordatorio" icon={Settings}>
           <form className="grid gap-4" onSubmit={submitTask}>
-            <Field label="Reminder title">
+            <Field label="Título del recordatorio">
               <input className="input" value={task.title}
                 onChange={(e) => setTask({ ...task, title: e.target.value })}
-                placeholder="Cleaning, maintenance, feed buying..." />
+                placeholder="Limpieza, mantenimiento, compra de alimento..." />
             </Field>
-            <Field label="Due date">
+            <Field label="Fecha límite">
               <input className="input" type="date" value={task.dueDate}
                 onChange={(e) => setTask({ ...task, dueDate: e.target.value })} />
             </Field>
-            <Field label="Notes">
+            <Field label="Notas">
               <input className="input" value={task.notes}
                 onChange={(e) => setTask({ ...task, notes: e.target.value })} />
             </Field>
-            <button className="primary-button h-13">Add reminder</button>
+            <button className="primary-button h-13">Agregar recordatorio</button>
           </form>
         </Card>
 
-        <Card title="Open maintenance" icon={ClipboardList}>
+        <Card title="Mantenimientos abiertos" icon={ClipboardList}>
           <div className="grid gap-3">
             {state.maintenanceTasks.map((item) => (
               <div key={item.id} className="rounded-2xl bg-[#f8f5ed] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-black">{item.title}</p>
-                    <p className="text-sm text-[#66736b]">Due {item.dueDate}</p>
+                    <p className="text-sm text-[#66736b]">Vence: {item.dueDate}</p>
                   </div>
                   <button className="rounded-xl bg-white px-3 py-2 text-xs font-black"
                     onClick={() => updateState({
@@ -2014,7 +2504,7 @@ function HealthSection({
                         task.id === item.id ? { ...task, status: task.status === "done" ? "open" : "done" } : task,
                       ),
                     })}>
-                    {item.status}
+                    {item.status === "done" ? "Completado" : "Pendiente"}
                   </button>
                 </div>
               </div>
@@ -2038,18 +2528,25 @@ function ReportsSection({
   onReset: () => void;
 }) {
   function exportCsv() {
-    const header = ["date", "eggsCollected", "crackedEggs", "goodEggs", "feedKg",
-      "sizeC", "sizeB", "sizeA", "sizeAA", "sizeAAA", "sizeJumbo",
-      "sizeTotal", "sizeSummary", "cartonsSold", "salesCop", "expensesCop"];
+    const columns = [
+      ["date", "fecha"], ["eggsCollected", "huevos_recogidos"],
+      ["crackedEggs", "huevos_quebrados"], ["goodEggs", "huevos_buenos"],
+      ["feedKg", "alimento_kg"], ["sizeC", "tamano_C"],
+      ["sizeB", "tamano_B"], ["sizeA", "tamano_A"],
+      ["sizeAA", "tamano_AA"], ["sizeAAA", "tamano_AAA"],
+      ["sizeJumbo", "tamano_Jumbo"], ["sizeTotal", "total_clasificado"],
+      ["sizeSummary", "resumen_tamanos"], ["cartonsSold", "cubetas_vendidas"],
+      ["salesCop", "ventas_cop"], ["expensesCop", "gastos_cop"],
+    ] as const;
     const csv = [
-      header.join(","),
-      ...rows.map((row) => header.map((key) => row[key as keyof typeof row]).join(",")),
+      columns.map(([, label]) => label).join(","),
+      ...rows.map((row) => columns.map(([key]) => row[key]).join(",")),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `brianna-egg-report-${todayIso()}.csv`;
+    link.download = `reporte-huevos-brianna-${todayIso()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -2058,44 +2555,44 @@ function ReportsSection({
     const { jsPDF } = await import("jspdf");
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.text("Brianna Eggs Farm Report", 14, 18);
+    doc.text("Reporte de Granja Brianna Eggs", 14, 18);
     doc.setFontSize(11);
-    doc.text(`Date: ${todayIso()}`, 14, 28);
-    doc.text(`Cartons available: ${metrics.cartonsAvailable}`, 14, 38);
-    doc.text(`Monthly sales: ${formatCop(metrics.monthlySales)}`, 14, 48);
-    doc.text(`Monthly expenses: ${formatCop(metrics.monthlyExpenses)}`, 14, 58);
-    doc.text(`Estimated profit: ${formatCop(metrics.monthlyProfit)}`, 14, 68);
+    doc.text(`Fecha: ${todayIso()}`, 14, 28);
+    doc.text(`Cubetas disponibles: ${metrics.cartonsAvailable}`, 14, 38);
+    doc.text(`Ventas del mes: ${formatCop(metrics.monthlySales)}`, 14, 48);
+    doc.text(`Gastos del mes: ${formatCop(metrics.monthlyExpenses)}`, 14, 58);
+    doc.text(`Ganancia estimada: ${formatCop(metrics.monthlyProfit)}`, 14, 68);
     let y = 84;
     rows.slice(-10).forEach((row) => {
-      doc.text(`${row.date}: ${row.goodEggs} good eggs, ${row.cartonsSold} cartons sold, ${formatCop(row.salesCop)} sales`, 14, y);
+      doc.text(`${row.date}: ${row.goodEggs} huevos buenos, ${row.cartonsSold} cubetas vendidas, ${formatCop(row.salesCop)} en ventas`, 14, y);
       y += 8;
     });
-    doc.save(`brianna-egg-report-${todayIso()}.pdf`);
+    doc.save(`reporte-huevos-brianna-${todayIso()}.pdf`);
   }
 
   return (
     <div className="grid gap-4">
       <section className="grid gap-3 md:grid-cols-3">
-        <MetricCard icon={Egg} label="Eggs available" value={metrics.eggsAvailable} tone="harvest" />
-        <MetricCard icon={ShoppingCart} label="Cartons available" value={metrics.cartonsAvailable} tone="clay" />
-        <MetricCard icon={Wallet} label="Monthly profit" value={formatCop(metrics.monthlyProfit)} tone="plum" />
+        <MetricCard icon={Egg} label="Huevos disponibles" value={metrics.eggsAvailable} tone="harvest" />
+        <MetricCard icon={ShoppingCart} label="Cubetas disponibles" value={metrics.cartonsAvailable} tone="clay" />
+        <MetricCard icon={Wallet} label="Ganancia del mes" value={formatCop(metrics.monthlyProfit)} tone="plum" />
       </section>
 
-      <Card title="Reports and exports" icon={Download}>
+      <Card title="Reportes y exportaciones" icon={Download}>
         <div className="grid gap-3 md:grid-cols-3">
           <button className="primary-button flex h-13 items-center justify-center gap-2" onClick={exportCsv}>
-            <Download size={19} /> Export CSV
+            <Download size={19} /> Exportar CSV
           </button>
           <button className="terracotta-button flex h-13 items-center justify-center gap-2" onClick={() => void exportPdf()}>
-            <Download size={19} /> Export PDF
+            <Download size={19} /> Exportar PDF
           </button>
           <button className="secondary-button flex h-13 items-center justify-center gap-2" onClick={onReset}>
-            <RefreshCw size={19} /> Start fresh
+            <RefreshCw size={19} /> Reiniciar datos
           </button>
         </div>
       </Card>
 
-      <Card title="Last 14 days" icon={BarChart3}>
+      <Card title="Últimos 14 días" icon={BarChart3}>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={rows}>
@@ -2110,18 +2607,18 @@ function ReportsSection({
         </div>
       </Card>
 
-      <Card title="Recent rows" icon={ClipboardList}>
+      <Card title="Registros recientes" icon={ClipboardList}>
         <DataBoxList
           rows={rows.slice().reverse().map((row) => ({
             id: row.date,
             fields: [
-              { label: "Date", value: row.date },
-              { label: "Eggs collected", value: row.eggsCollected },
-              { label: "Good eggs", value: row.goodEggs },
-              { label: "Feed kg", value: row.feedKg || "-" },
-              { label: "Sizes", value: row.sizeSummary },
-              { label: "Sold", value: row.cartonsSold },
-              { label: "Sales", value: formatCop(row.salesCop) },
+              { label: "Fecha", value: row.date },
+              { label: "Huevos recogidos", value: row.eggsCollected },
+              { label: "Huevos buenos", value: row.goodEggs },
+              { label: "Alimento kg", value: row.feedKg || "-" },
+              { label: "Tamaños", value: row.sizeSummary },
+              { label: "Vendido", value: row.cartonsSold },
+              { label: "Ventas", value: formatCop(row.salesCop) },
             ],
           }))}
         />
@@ -2133,14 +2630,16 @@ function ReportsSection({
 function FloatingSideNav({
   activeTab,
   setActiveTab,
+  allowedTabs,
 }: {
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
+  allowedTabs: TabKey[];
 }) {
   return (
     <aside className="fixed left-4 top-1/2 z-30 hidden -translate-y-1/2 md:block lg:left-6">
       <nav className="floating-card grid gap-2 p-2">
-        {tabs.map((tab) => {
+        {tabs.filter((tab) => allowedTabs.includes(tab.id)).map((tab) => {
           const Icon = tab.icon;
           const selected = activeTab === tab.id;
 
@@ -2171,7 +2670,7 @@ function ThemeToggle({
 }) {
   const nextThemeMode = themeMode === "daylight" ? "nighttime" : "daylight";
   const ToggleIcon = nextThemeMode === "nighttime" ? Moon : Sun;
-  const label = `Switch to ${nextThemeMode === "nighttime" ? "night" : "day"} mode`;
+  const label = `Cambiar a modo ${nextThemeMode === "nighttime" ? "noche" : "día"}`;
 
   return (
     <button
@@ -2205,9 +2704,9 @@ function MoreSection({
   onReset: () => void;
 }) {
   const options: { id: MoreSectionKey; label: string; detail: string; icon: React.ComponentType<{ size?: number }>; tone: OrganicTone }[] = [
-    { id: "inventory", label: "Inventory", detail: "Feed, medicine, packaging", icon: Boxes, tone: "moss" },
-    { id: "health", label: "Health", detail: "Care notes and reminders", icon: HeartPulse, tone: "plum" },
-    { id: "reports", label: "Reports", detail: "CSV, PDF, performance", icon: BarChart3, tone: "harvest" },
+    { id: "inventory", label: "Inventario", detail: "Alimento, medicina y empaques", icon: Boxes, tone: "moss" },
+    { id: "health", label: "Salud", detail: "Notas de cuidado y recordatorios", icon: HeartPulse, tone: "plum" },
+    { id: "reports", label: "Reportes", detail: "CSV, PDF y rendimiento", icon: BarChart3, tone: "harvest" },
   ];
 
   return (
@@ -2309,9 +2808,9 @@ function NumericKeypad({ onDigit, onBackspace, onClear }: { onDigit: (digit: num
       {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
         <button key={digit} type="button" className="secondary-button h-12 text-lg" onClick={() => onDigit(digit)}>{digit}</button>
       ))}
-      <button type="button" className="secondary-button h-12 text-sm" onClick={onClear}>Clear</button>
+      <button type="button" className="secondary-button h-12 text-sm" onClick={onClear}>Limpiar</button>
       <button type="button" className="secondary-button h-12 text-lg" onClick={() => onDigit(0)}>0</button>
-      <button type="button" className="secondary-button h-12 text-sm" onClick={onBackspace}>Back</button>
+      <button type="button" className="secondary-button h-12 text-sm" onClick={onBackspace}>Borrar</button>
     </div>
   );
 }
@@ -2334,7 +2833,7 @@ function EggSizeEntry({ category, value, onChange }: { category: EggSizeCategory
         <span className={`egg-size-egg size-${category.toLowerCase()}`} aria-hidden="true" />
         <span className="egg-size-label">{category}</span>
       </span>
-      <span className="egg-size-field-label">eggs</span>
+      <span className="egg-size-field-label">huevos</span>
       <input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off"
         value={formatNumericInputValue(value)}
         onChange={(e) => onChange(parseNumericInputValue(e.target.value))}

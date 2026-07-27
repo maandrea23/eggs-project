@@ -54,6 +54,8 @@ export type Sale = {
   cartonType?: EggSizeCategory;
   pricePerCartonCop: number;
   customerName?: string;
+  customerPhone?: string;
+  purchaseLocation?: string;
 };
 
 export type FeedPurchase = {
@@ -117,6 +119,15 @@ export type MaintenanceTask = {
   notes?: string;
 };
 
+export type FarmNotification = {
+  id: string;
+  type: "egg_collection" | "egg_classification";
+  title: string;
+  detail: string;
+  createdAt: string;
+  readAt?: string;
+};
+
 export type OfflineQueueItem = {
   id: string;
   tableName: "egg_logs" | "sales" | "feed_usage" | "expenses";
@@ -167,6 +178,7 @@ export type FarmState = {
   healthRecords: HealthRecord[];
   maintenanceTasks: MaintenanceTask[];
   investments: InvestmentItem[];
+  notifications: FarmNotification[];
   offlineQueue: OfflineQueueItem[];
 };
 

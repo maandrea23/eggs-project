@@ -26,9 +26,20 @@ Mobile-first poultry farm management MVP for one small egg farm with COP money t
 
    [http://localhost:3000](http://localhost:3000)
 
-5. Click **Owner Mode**.
+5. Open **Owner sign in** and enter the owner credentials.
 
 The owner mode saves data in this browser with `localStorage`, so daily egg logs keep working even when the internet is unavailable after the app has loaded.
+
+## Owner Access
+
+Set these variables in Dailey (or in a local `.env.local`) before deploying:
+
+```bash
+OWNER_USERNAME=your-owner-username
+OWNER_PASSWORD=a-strong-unique-password
+```
+
+For local development only, if those variables are not set, the temporary credentials are `owner` and `brianna2026`. Operator mode does not require a password and can access only the egg collection section.
 
 ## What Is Included
 

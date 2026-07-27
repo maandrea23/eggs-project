@@ -103,6 +103,7 @@ export function migrateFarmState(state: FarmState): FarmState {
     ),
     flockArrivals: (state as any).flockArrivals ?? [],
     mortalityRecords: (state as any).mortalityRecords ?? [],
+    notifications: (state as any).notifications ?? [],
   };
 
   const salesBreakdownByDate = buildBreakdownByDateFromSales(withDefaults);
@@ -112,6 +113,8 @@ export function migrateFarmState(state: FarmState): FarmState {
     sales: (withDefaults.sales ?? []).map((sale) => ({
       ...sale,
       cartonType: (sale as any).cartonType ?? parseSaleCategory(sale.customerName),
+      customerPhone: (sale as any).customerPhone,
+      purchaseLocation: (sale as any).purchaseLocation,
     })),
     eggLogs: (withDefaults.eggLogs ?? []).map((log) => {
       const existingBreakdown = normalizeEggSizeBreakdown(

@@ -114,7 +114,7 @@ export const formatWeekRange = (
   settings?: Partial<AccountingWeekSettings>,
 ) => {
   const { start, end } = getWeekRangeFromId(weekId, settings);
-  return `${format(start, "yyyy-MM-dd")} to ${format(end, "yyyy-MM-dd")}`;
+  return `${format(start, "yyyy-MM-dd")} al ${format(end, "yyyy-MM-dd")}`;
 };
 
 export const getDayName = (dateStr: string) => {
@@ -129,6 +129,10 @@ function getCategorySaleCount(
   sale: FarmState["sales"][number],
   category: EggSizeCategory,
 ) {
+  if (sale.cartonType) {
+    return sale.cartonType === category ? sale.cartons * CARTON_SIZE : 0;
+  }
+
   const saleText = sale.customerName ?? "";
   const labels = category === "Jumbo" ? ["Jumbo", "Jumbo/Rotos"] : [category];
 
@@ -490,15 +494,15 @@ export function buildAlerts(state: FarmState): Alert[] {
     alerts.push({
       id: "low-feed",
       tone: "danger",
-      title: "Low feed stock",
-      detail: `Only ${formatNumber(metrics.feedStockKg)} kg remaining.`,
+      title: "Stock de alimento bajo",
+      detail: `Solo quedan ${formatNumber(metrics.feedStockKg)} kg.`,
     });
   } else if (metrics.feedDaysRemaining <= 7) {
     alerts.push({
       id: "feed-days",
       tone: "warning",
-      title: "Feed buying reminder",
-      detail: `Estimated ${metrics.feedDaysRemaining} days of feed left.`,
+      title: "Recordatorio de compra de alimento",
+      detail: `Quedan aproximadamente ${metrics.feedDaysRemaining} días de alimento.`,
     });
   }
 
@@ -506,8 +510,8 @@ export function buildAlerts(state: FarmState): Alert[] {
     alerts.push({
       id: "production-drop",
       tone: "warning",
-      title: "Production dropped",
-      detail: "Latest egg collection is below the recent 7-day average.",
+      title: "La producción disminuyó",
+      detail: "La última recolección está por debajo del promedio de los últimos 7 días.",
     });
   }
 
@@ -519,7 +523,7 @@ export function buildAlerts(state: FarmState): Alert[] {
     alerts.push({
       id: "health",
       tone: "info",
-      title: "Recent health note",
+      title: "Nota de salud reciente",
       detail: recentHealth.notes,
     });
   }
@@ -534,8 +538,8 @@ export function buildAlerts(state: FarmState): Alert[] {
     alerts.push({
       id: "maintenance",
       tone: "warning",
-      title: "Maintenance due",
-      detail: `${dueTask.title} is due ${dueTask.dueDate}.`,
+      title: "Mantenimiento próximo",
+      detail: `${dueTask.title} vence el ${dueTask.dueDate}.`,
     });
   }
 
@@ -545,8 +549,8 @@ export function buildAlerts(state: FarmState): Alert[] {
       alerts.push({
         id: `stock-${item.id}`,
         tone: "warning",
-        title: `${item.name} low`,
-        detail: `${formatNumber(item.quantity)} ${item.unit} on hand.`,
+        title: `${item.name}: nivel bajo`,
+        detail: `${formatNumber(item.quantity)} ${item.unit} disponibles.`,
       });
     });
 
@@ -558,7 +562,7 @@ export const INVESTMENT_CATEGORIES: {
   label: string;
   color: string;
 }[] = [
-  { key: "galpon_construccion", label: "Galpon - Construccion", color: "var(--base-clay)" },
+  { key: "galpon_construccion", label: "Galpón - Construcción", color: "var(--base-clay)" },
   { key: "galpon_materiales_olga", label: "Galpon - Materiales OLGA", color: "var(--base-harvest)" },
   { key: "galpon_materiales_homecenter", label: "Galpon - Materiales Homecenter", color: "var(--base-moss)" },
   { key: "galpon_materiales_laroca", label: "Galpon - Materiales La Roca", color: "var(--base-plum)" },
@@ -566,7 +570,7 @@ export const INVESTMENT_CATEGORIES: {
   { key: "gallinas_alimento", label: "Gallinas - Alimento", color: "#c4d4b0" },
   { key: "gallinas_medicina_vacunas", label: "Gallinas - Medicina/Vacunas", color: "#d4b0c4" },
   { key: "gallinas_implementos", label: "Gallinas - Implementos", color: "#b0c4d4" },
-  { key: "gastos_semanales", label: "Gastos Semanales Pre-Produccion", color: "#e0d0a0" },
+  { key: "gastos_semanales", label: "Gastos semanales de preproducción", color: "#e0d0a0" },
 ];
 
 export function calculateInvestmentByCategory(
@@ -668,39 +672,39 @@ export function buildInsights(state: FarmState): Insight[] {
   return [
     {
       id: "weekly-production",
-      title: "Eggs collected this week",
-      value: `${thisWeekEggs} eggs`,
-      detail: `${formatNumber(thisWeekEggs / Math.max(thisWeek.length, 1))} good eggs per logged day.`,
+      title: "Huevos recogidos esta semana",
+      value: `${thisWeekEggs} huevos`,
+      detail: `${formatNumber(thisWeekEggs / Math.max(thisWeek.length, 1))} huevos buenos por día registrado.`,
     },
     {
       id: "cartons-ready",
-      title: "Cartons ready to sell",
-      value: `${metrics.cartonsAvailable} cartons`,
-      detail: `${metrics.looseEggs} loose eggs remain after full cartons.`,
+      title: "Cubetas listas para vender",
+      value: `${metrics.cartonsAvailable} cubetas`,
+      detail: `Quedan ${metrics.looseEggs} huevos sueltos después de formar las cubetas.`,
     },
     {
       id: "feed-days",
-      title: "Feed runway",
-      value: `${metrics.feedDaysRemaining} days`,
-      detail: `${formatNumber(metrics.feedStockKg)} kg estimated stock.`,
+      title: "Duración del alimento",
+      value: `${metrics.feedDaysRemaining} días`,
+      detail: `${formatNumber(metrics.feedStockKg)} kg de stock estimado.`,
     },
     {
       id: "profit",
-      title: "Estimated profit this month",
+      title: "Ganancia estimada este mes",
       value: formatCop(metrics.monthlyProfit),
-      detail: `Sales minus feed and operating expenses.`,
+      detail: "Ventas menos alimento y gastos operativos.",
     },
     {
       id: "feed-cost",
-      title: "Feed cost per carton",
+      title: "Costo de alimento por cubeta",
       value: formatCop(metrics.feedCostPerCarton),
-      detail: `${formatCop(metrics.feedCostPerEgg)} per egg this month.`,
+      detail: `${formatCop(metrics.feedCostPerEgg)} por huevo este mes.`,
     },
     ...(hasSizeData
       ? [
           {
             id: "top-egg-size",
-            title: "Most common egg size",
+            title: "Tamaño de huevo más común",
             value: topSize,
             detail: formatEggSizeBreakdown(sizeTotals),
           } as Insight,
@@ -710,18 +714,18 @@ export function buildInsights(state: FarmState): Insight[] {
       id: "egg-trend",
       title:
         productionChange >= 0
-          ? "Egg production improved."
-          : "Egg production dropped.",
+          ? "La producción de huevos mejoró."
+          : "La producción de huevos disminuyó.",
       value: `${formatNumber(Math.abs(productionChange))}%`,
-      detail: "Compared with the previous 7 days.",
+      detail: "Comparado con los 7 días anteriores.",
     },
     ...(totalInvestment > 0
       ? [
           {
             id: "total-investment",
-            title: "Total inversion hasta la fecha",
+            title: "Inversión total hasta la fecha",
             value: formatCop(totalInvestment),
-            detail: `Galpon + gallinas + alimento + implementos`,
+            detail: "Galpón + gallinas + alimento + implementos",
           } as Insight,
         ]
       : []),

@@ -17,7 +17,7 @@ export async function GET() {
         error:
           error instanceof Error
             ? error.message
-            : "Unable to read farm data.",
+            : "No fue posible leer los datos de la granja.",
       },
       { status: 503 },
     );
@@ -30,7 +30,7 @@ export async function PUT(request: Request) {
 
     if (!body.state) {
       return NextResponse.json(
-        { error: "Missing farm state payload." },
+        { error: "Falta la información de la granja." },
         { status: 400 },
       );
     }
@@ -43,7 +43,7 @@ export async function PUT(request: Request) {
         error:
           error instanceof Error
             ? error.message
-            : "Unable to save farm data.",
+            : "No fue posible guardar los datos de la granja.",
       },
       { status: 503 },
     );

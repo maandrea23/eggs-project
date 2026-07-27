@@ -52,7 +52,7 @@ const investmentCategories: InvestmentCategory[] = [
 ];
 
 const categoryLabels: Record<InvestmentCategory, string> = {
-  galpon_construccion: "Galpon - Construccion",
+  galpon_construccion: "Galpón - Construcción",
   galpon_materiales_olga: "Galpon - Materiales OLGA",
   galpon_materiales_homecenter: "Galpon - Materiales Homecenter",
   galpon_materiales_laroca: "Galpon - Materiales La Roca",
@@ -113,7 +113,7 @@ export default function InvestmentSection({
     const next = { id: makeId("investment"), ...newItem };
     updateState(
       { ...state, investments: [...(state.investments ?? []), next] },
-      "Investment saved.",
+      "Inversión guardada.",
     );
     setNewItem({
       date: todayIso(),
@@ -136,7 +136,7 @@ export default function InvestmentSection({
         ...state,
         investments: (state.investments ?? []).filter((x) => x.id !== id),
       },
-      "Removed.",
+      "Eliminado.",
     );
   }
 
@@ -158,7 +158,7 @@ export default function InvestmentSection({
       breakdown.categories
         .filter((c) => c.amount > 0)
         .map((c) => ({
-          name: c.label.replace("Galpon - ", "").replace("Gallinas - ", ""),
+          name: c.label.replace("Galpón - ", "").replace("Gallinas - ", ""),
           amount: c.amount,
           fill: c.color,
         })),
@@ -238,26 +238,26 @@ export default function InvestmentSection({
               <div className="organic-illustration grid h-10 w-10 place-items-center rounded-[1.25rem] shadow-sm">
                 <Plus size={20} />
               </div>
-              <h3 className="text-lg font-black">Agregar inversion</h3>
+              <h3 className="text-lg font-black">Agregar inversión</h3>
             </div>
             {!showForm && (
               <button
                 className="primary-button h-11 px-5 text-sm"
                 onClick={() => setShowForm(true)}
               >
-                <Plus size={16} /> Nueva inversion
+                <Plus size={16} /> Nueva inversión
               </button>
             )}
           </div>
           {showForm && (
             <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={submitInvestment}>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Date</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Fecha</label>
                 <input className="input" type="date" value={newItem.date}
                   onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Category</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Categoría</label>
                 <select className="input" value={newItem.category}
                   onChange={(e) => setNewItem({ ...newItem, category: e.target.value as InvestmentCategory })}>
                   {investmentCategories.map((c) => (
@@ -266,17 +266,17 @@ export default function InvestmentSection({
                 </select>
               </div>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Subcategory</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Subcategoría</label>
                 <input className="input" value={newItem.subcategory}
                   onChange={(e) => setNewItem({ ...newItem, subcategory: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Description</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Descripción</label>
                 <input className="input" value={newItem.description}
                   onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Quantity</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Cantidad</label>
                 <input className="input" inputMode="numeric" value={newItem.quantity || ""}
                   onChange={(e) => {
                     const q = parseInt(e.target.value) || 0;
@@ -284,12 +284,12 @@ export default function InvestmentSection({
                   }} />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Unit</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Unidad</label>
                 <input className="input" value={newItem.unit}
                   onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Unit price COP</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Precio unitario (COP)</label>
                 <input className="input" inputMode="numeric" value={newItem.unitPrice || ""}
                   onChange={(e) => {
                     const p = parseInt(e.target.value) || 0;
@@ -297,18 +297,18 @@ export default function InvestmentSection({
                   }} />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Total price COP</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Precio total (COP)</label>
                 <input className="input" inputMode="numeric" value={newItem.totalPrice || ""}
                   onChange={(e) => setNewItem({ ...newItem, totalPrice: parseInt(e.target.value) || 0 })} />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-xs font-bold text-[var(--muted)]">Supplier</label>
+                <label className="text-xs font-bold text-[var(--muted)]">Proveedor</label>
                 <input className="input" value={newItem.supplier}
                   onChange={(e) => setNewItem({ ...newItem, supplier: e.target.value })} />
               </div>
               <div className="flex items-end gap-2 sm:col-span-2">
                 <button className="primary-button h-13 flex-1">
-                  <Save size={17} /> Save
+                  <Save size={17} /> Guardar
                 </button>
                 <button type="button" className="h-13 w-13 rounded-2xl bg-[var(--line)] grid place-items-center"
                   onClick={() => setShowForm(false)}>
@@ -321,7 +321,7 @@ export default function InvestmentSection({
       )}
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <Card title="Galpon" icon={Building2}>
+        <Card title="Galpón" icon={Building2}>
           <p className="text-3xl font-black">{formatCop(galponTotal)}</p>
           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
             Incluye construccion (obra gris, mano de obra, transporte) y
@@ -338,7 +338,7 @@ export default function InvestmentSection({
                   key={c.key}
                   className="soft-panel flex items-center justify-between p-3"
                 >
-                  <span className="text-sm font-bold">{c.label.replace("Galpon - ", "")}</span>
+                  <span className="text-sm font-bold">{c.label.replace("Galpón - ", "")}</span>
                   <span className="text-sm font-black">
                     {formatCop(c.amount)}
                   </span>
@@ -437,7 +437,7 @@ export default function InvestmentSection({
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card title="Analisis" icon={TrendingUp}>
+        <Card title="Análisis" icon={TrendingUp}>
           <div className="grid gap-4">
             <div className="soft-panel p-4">
               <p className="font-black">Costo total por gallina</p>
@@ -447,7 +447,7 @@ export default function InvestmentSection({
                 )}
               </p>
               <p className="mt-1 text-sm text-[var(--muted)]">
-                Inversion en aves + alimento + medicinas + implementos
+                Inversión en aves + alimento + medicinas + implementos
                 dividido entre 400 gallinas.
               </p>
             </div>
@@ -473,10 +473,10 @@ export default function InvestmentSection({
                 / carton
               </p>
               <p className="mt-1 text-sm text-[var(--muted)]">
-                Para recuperar la inversion de {formatCop(breakdown.total)}{" "}
+                Para recuperar la inversión de {formatCop(breakdown.total)}{" "}
                 necesitas vender ~{formatNumber(breakdown.total / 30 / 300)}{" "}
-                cartones a ${formatCop(300)} cada uno. Con produccion actual
-                de ~150 huevos/dia (~5 cartones), serian~
+                cubetas a ${formatCop(300)} cada una. Con la producción actual
+                de ~150 huevos/día (~5 cubetas), serían aproximadamente
                 {formatNumber(breakdown.total / 30 / 300 / 5 / 30)} meses.
               </p>
             </div>
