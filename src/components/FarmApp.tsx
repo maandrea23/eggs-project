@@ -526,7 +526,7 @@ export default function FarmApp() {
         allowedTabs={allowedTabs}
       />
       <div className="mx-auto max-w-6xl pb-28 md:ml-28 md:pb-10 lg:ml-auto">
-        <header className="sticky top-0 z-20 px-4 py-4 backdrop-blur md:static md:px-6 md:pt-7">
+        <header className="sticky top-0 z-30 px-4 py-4 backdrop-blur md:relative md:z-[70] md:px-6 md:pt-7">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--clay)]">
