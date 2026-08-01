@@ -130,7 +130,7 @@ export type FarmNotification = {
 
 export type OfflineQueueItem = {
   id: string;
-  tableName: "egg_logs" | "sales" | "feed_usage" | "expenses";
+  tableName: "egg_logs" | "sales" | "feed_usage" | "expenses" | "investments";
   action: "insert";
   payload: unknown;
   createdAt: string;

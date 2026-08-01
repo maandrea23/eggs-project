@@ -16,6 +16,7 @@ import {
   Ellipsis,
   Eye,
   EyeOff,
+  FileUp,
   HeartPulse,
   Home,
   LockKeyhole,
@@ -78,6 +79,7 @@ import {
 import { createFreshFarmState } from "@/lib/farm-state-defaults";
 import { migrateFarmState } from "@/lib/farm-state-migration";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
+import { csvTemplate, isIsoDate, parseCsv, parseCsvNumber } from "@/lib/csv-import";
 import type { ThemeMode } from "@/lib/theme-mode";
 import { useThemeMode } from "@/lib/use-theme-mode";
 import InvestmentSection from "@/components/InvestmentSection";
@@ -85,6 +87,7 @@ import type {
   Expense,
   FarmState,
   HealthRecord,
+  InvestmentCategory,
   OfflineQueueItem,
   EggSizeCategory,
   FarmNotification,
@@ -102,7 +105,7 @@ type TabKey =
   | "investment"
   | "more";
 
-type MoreSectionKey = "inventory" | "health" | "reports";
+type MoreSectionKey = "inventory" | "health" | "reports" | "import";
 
 type UserMode = "owner" | "operator";
 type OrganicTone = "moss" | "harvest" | "clay" | "plum";
@@ -674,6 +677,7 @@ export default function FarmApp() {
                 moreSection={moreSection}
                 setMoreSection={setMoreSection}
                 updateState={updateState}
+                queueOfflineItem={queueOfflineItem}
                 onReset={handleResetFarmWorkspace}
               />
             ) : null
@@ -2802,6 +2806,7 @@ function MoreSection({
   moreSection,
   setMoreSection,
   updateState,
+  queueOfflineItem,
   onReset,
 }: {
   state: FarmState;
@@ -2810,17 +2815,22 @@ function MoreSection({
   moreSection: MoreSectionKey;
   setMoreSection: (section: MoreSectionKey) => void;
   updateState: (state: FarmState) => void;
+  queueOfflineItem: (
+    tableName: OfflineQueueItem["tableName"],
+    payload: unknown,
+  ) => OfflineQueueItem;
   onReset: () => void;
 }) {
   const options: { id: MoreSectionKey; label: string; detail: string; icon: React.ComponentType<{ size?: number }>; tone: OrganicTone }[] = [
     { id: "inventory", label: "Inventario", detail: "Alimento, medicina y empaques", icon: Boxes, tone: "moss" },
     { id: "health", label: "Salud", detail: "Notas de cuidado y recordatorios", icon: HeartPulse, tone: "plum" },
+    { id: "import", label: "Carga masiva", detail: "Plantillas e importación CSV", icon: FileUp, tone: "clay" },
     { id: "reports", label: "Reportes", detail: "CSV, PDF y rendimiento", icon: BarChart3, tone: "harvest" },
   ];
 
   return (
     <div className="grid gap-5">
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid gap-3 md:grid-cols-4">
         {options.map((option) => {
           const Icon = option.icon;
           const selected = moreSection === option.id;
@@ -2842,8 +2852,350 @@ function MoreSection({
 
       {moreSection === "inventory" ? <InventorySection state={state} updateState={updateState} /> : null}
       {moreSection === "health" ? <HealthSection state={state} updateState={updateState} /> : null}
+      {moreSection === "import" ? <CsvBulkImportSection state={state} updateState={updateState} queueOfflineItem={queueOfflineItem} /> : null}
       {moreSection === "reports" ? <ReportsSection state={state} rows={rows} metrics={metrics} onReset={onReset} /> : null}
     </div>
+  );
+}
+
+type CsvImportKind = "egg_logs" | "feed_usage" | "expenses" | "investments";
+
+const CSV_IMPORT_TEMPLATES: Record<CsvImportKind, { label: string; fileName: string; headers: string[]; help: string }> = {
+  egg_logs: {
+    label: "Recolecciones y clasificación",
+    fileName: "plantilla_recolecciones_huevos.csv",
+    headers: ["fecha", "total_huevos", "huevos_quebrados", "kg_alimento_consumido", "vitaminas_agua", "vitaminas_alimento", "nota", "tipo_c", "tipo_b", "tipo_a", "tipo_aa", "tipo_aaa", "tipo_jumbo"],
+    help: "Una fila por día. La fecha debe estar en formato AAAA-MM-DD y los tipos no pueden superar los huevos buenos.",
+  },
+  feed_usage: {
+    label: "Consumo de alimento",
+    fileName: "plantilla_consumo_alimento.csv",
+    headers: ["fecha", "kg_consumidos", "notas"],
+    help: "Puedes registrar un consumo diario o el total de una semana con la fecha de cierre de esa semana.",
+  },
+  expenses: {
+    label: "Gastos",
+    fileName: "plantilla_gastos.csv",
+    headers: ["fecha", "categoria", "monto_cop", "descripcion"],
+    help: "Categorías válidas: Mantenimiento, Medicina, Vacunas, Cama, Transporte, Mano de obra, Electricidad, Agua, Reparaciones, Empaques o Limpieza.",
+  },
+  investments: {
+    label: "Inversión inicial",
+    fileName: "plantilla_inversion_inicial.csv",
+    headers: ["fecha", "categoria", "subcategoria", "descripcion", "cantidad", "unidad", "precio_unitario_cop", "proveedor"],
+    help: "Usa las categorías listadas abajo. El total se calcula automáticamente: cantidad × precio unitario.",
+  },
+};
+
+const CSV_EXPENSE_CATEGORY_ALIASES: Record<string, Expense["category"]> = {
+  maintenance: "maintenance",
+  mantenimiento: "maintenance",
+  medicine: "medicine",
+  medicina: "medicine",
+  vaccines: "vaccines",
+  vacunas: "vaccines",
+  bedding: "bedding",
+  cama: "bedding",
+  transport: "transport",
+  transporte: "transport",
+  labour: "labour",
+  mano_de_obra: "labour",
+  electricity: "electricity",
+  electricidad: "electricity",
+  water: "water",
+  agua: "water",
+  repairs: "repairs",
+  reparaciones: "repairs",
+  packaging: "packaging",
+  empaques: "packaging",
+  cleaning: "cleaning",
+  limpieza: "cleaning",
+};
+
+const CSV_INVESTMENT_CATEGORIES: InvestmentCategory[] = [
+  "galpon_construccion", "galpon_materiales_olga", "galpon_materiales_homecenter", "galpon_materiales_laroca", "gallinas_compra", "gallinas_alimento", "gallinas_medicina_vacunas", "gallinas_implementos", "gastos_semanales", "cuidandero", "otros",
+];
+
+function CsvBulkImportSection({
+  state,
+  updateState,
+  queueOfflineItem,
+}: {
+  state: FarmState;
+  updateState: (state: FarmState) => void;
+  queueOfflineItem: (
+    tableName: OfflineQueueItem["tableName"],
+    payload: unknown,
+  ) => OfflineQueueItem;
+}) {
+  const [kind, setKind] = useState<CsvImportKind>("egg_logs");
+  const [message, setMessage] = useState("");
+  const template = CSV_IMPORT_TEMPLATES[kind];
+
+  function downloadTemplate() {
+    const blob = new Blob([csvTemplate(template.headers)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = template.fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function numberFromRow(
+    row: Record<string, string>,
+    column: string,
+    rowNumber: number,
+    errors: string[],
+    options: { required?: boolean; integer?: boolean; min?: number } = {},
+  ) {
+    const rawValue = row[column]?.trim() ?? "";
+    if (!rawValue && !options.required) {
+      return 0;
+    }
+
+    const value = parseCsvNumber(rawValue);
+    if (
+      !Number.isFinite(value) ||
+      (options.integer && !Number.isInteger(value)) ||
+      (options.min !== undefined && value < options.min)
+    ) {
+      errors.push(`Fila ${rowNumber}: “${column}” no es válido.`);
+      return 0;
+    }
+
+    return value;
+  }
+
+  function validateHeaders(rows: Record<string, string>[], requiredHeaders: string[]) {
+    const headers = new Set(Object.keys(rows[0] ?? {}));
+    const missing = requiredHeaders.filter((header) => !headers.has(header));
+    return missing.length ? `Faltan las columnas: ${missing.join(", ")}.` : "";
+  }
+
+  async function importCsv(file: File) {
+    const rows = parseCsv(await file.text());
+    if (!rows.length) {
+      setMessage("El archivo no tiene filas para importar.");
+      return;
+    }
+
+    const errors: string[] = [];
+
+    if (kind === "egg_logs") {
+      const headerError = validateHeaders(rows, ["fecha", "total_huevos", "huevos_quebrados", "kg_alimento_consumido"]);
+      if (headerError) {
+        setMessage(headerError);
+        return;
+      }
+
+      const existingDates = new Set(state.eggLogs.map((log) => log.date));
+      const importedDates = new Set<string>();
+      const entries = rows.map((row, index) => {
+        const rowNumber = index + 2;
+        const date = row.fecha?.trim() ?? "";
+        const totalEggs = numberFromRow(row, "total_huevos", rowNumber, errors, { required: true, integer: true, min: 1 });
+        const crackedEggs = numberFromRow(row, "huevos_quebrados", rowNumber, errors, { required: true, integer: true, min: 0 });
+        const feedConsumedKg = numberFromRow(row, "kg_alimento_consumido", rowNumber, errors, { required: true, min: 0.001 });
+        const sizeBreakdown = normalizeEggSizeBreakdown({
+          C: numberFromRow(row, "tipo_c", rowNumber, errors, { integer: true, min: 0 }),
+          B: numberFromRow(row, "tipo_b", rowNumber, errors, { integer: true, min: 0 }),
+          A: numberFromRow(row, "tipo_a", rowNumber, errors, { integer: true, min: 0 }),
+          AA: numberFromRow(row, "tipo_aa", rowNumber, errors, { integer: true, min: 0 }),
+          AAA: numberFromRow(row, "tipo_aaa", rowNumber, errors, { integer: true, min: 0 }),
+          Jumbo: numberFromRow(row, "tipo_jumbo", rowNumber, errors, { integer: true, min: 0 }),
+        });
+
+        if (!isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
+        if (existingDates.has(date) || importedDates.has(date)) errors.push(`Fila ${rowNumber}: ya existe una recolección para ${date}.`);
+        if (crackedEggs > totalEggs) errors.push(`Fila ${rowNumber}: los huevos quebrados no pueden superar el total.`);
+        if (getEggSizeTotal(sizeBreakdown) > totalEggs - crackedEggs) errors.push(`Fila ${rowNumber}: la clasificación supera los huevos buenos.`);
+        importedDates.add(date);
+
+        return {
+          id: makeId("egg"),
+          date,
+          totalEggs,
+          crackedEggs,
+          sizeBreakdown,
+          feedConsumedKg,
+          vitaminInWater: row.vitaminas_agua?.trim() ?? "",
+          vitaminInFeed: row.vitaminas_alimento?.trim() ?? "",
+          notes: row.nota?.trim() || undefined,
+          synced: false,
+          createdAt: nowIso(),
+        };
+      });
+
+      if (errors.length) {
+        setMessage(`No se importó el archivo. ${errors.slice(0, 3).join(" ")}`);
+        return;
+      }
+
+      updateState({
+        ...state,
+        eggLogs: [...state.eggLogs, ...entries].sort((a, b) => a.date.localeCompare(b.date)),
+        offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("egg_logs", entry))],
+      });
+      setMessage(`${entries.length} recolecciones importadas correctamente.`);
+      return;
+    }
+
+    if (kind === "feed_usage") {
+      const headerError = validateHeaders(rows, ["fecha", "kg_consumidos"]);
+      if (headerError) {
+        setMessage(headerError);
+        return;
+      }
+
+      const entries = rows.map((row, index) => {
+        const rowNumber = index + 2;
+        const date = row.fecha?.trim() ?? "";
+        const quantityKg = numberFromRow(row, "kg_consumidos", rowNumber, errors, { required: true, min: 0.001 });
+        if (!isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
+        return { id: makeId("feed-use"), date, quantityKg, notes: row.notas?.trim() || undefined };
+      });
+
+      if (errors.length) {
+        setMessage(`No se importó el archivo. ${errors.slice(0, 3).join(" ")}`);
+        return;
+      }
+
+      const consumedKg = entries.reduce((sum, entry) => sum + entry.quantityKg, 0);
+      updateState({
+        ...state,
+        feedUsage: [...state.feedUsage, ...entries],
+        inventoryItems: state.inventoryItems.map((item) =>
+          item.id === "inv-feed" ? { ...item, quantity: Math.max(item.quantity - consumedKg, 0) } : item,
+        ),
+        offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("feed_usage", entry))],
+      });
+      setMessage(`${entries.length} consumos de alimento importados correctamente.`);
+      return;
+    }
+
+    if (kind === "expenses") {
+      const headerError = validateHeaders(rows, ["fecha", "categoria", "monto_cop", "descripcion"]);
+      if (headerError) {
+        setMessage(headerError);
+        return;
+      }
+
+      const entries = rows.map((row, index) => {
+        const rowNumber = index + 2;
+        const date = row.fecha?.trim() ?? "";
+        const normalizedCategory = (row.categoria?.trim() ?? "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_");
+        const category = CSV_EXPENSE_CATEGORY_ALIASES[normalizedCategory];
+        const amountCop = numberFromRow(row, "monto_cop", rowNumber, errors, { required: true, min: 0.001 });
+        const description = row.descripcion?.trim() ?? "";
+        if (!isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
+        if (!category) errors.push(`Fila ${rowNumber}: categoría de gasto no válida.`);
+        if (!description) errors.push(`Fila ${rowNumber}: agrega una descripción.`);
+        return { id: makeId("expense"), date, category: category ?? "maintenance", amountCop, description };
+      });
+
+      if (errors.length) {
+        setMessage(`No se importó el archivo. ${errors.slice(0, 3).join(" ")}`);
+        return;
+      }
+
+      updateState({
+        ...state,
+        expenses: [...state.expenses, ...entries],
+        offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("expenses", entry))],
+      });
+      setMessage(`${entries.length} gastos importados correctamente.`);
+      return;
+    }
+
+    const headerError = validateHeaders(rows, ["categoria", "descripcion", "cantidad", "unidad", "precio_unitario_cop"]);
+    if (headerError) {
+      setMessage(headerError);
+      return;
+    }
+
+    const entries = rows.map((row, index) => {
+      const rowNumber = index + 2;
+      const date = row.fecha?.trim() ?? "";
+      const category = row.categoria?.trim().toLowerCase() as InvestmentCategory;
+      const quantity = numberFromRow(row, "cantidad", rowNumber, errors, { required: true, min: 0.001 });
+      const unitPrice = numberFromRow(row, "precio_unitario_cop", rowNumber, errors, { required: true, min: 0 });
+      const description = row.descripcion?.trim() ?? "";
+      const unit = row.unidad?.trim() ?? "";
+      if (date && !isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
+      if (!CSV_INVESTMENT_CATEGORIES.includes(category)) errors.push(`Fila ${rowNumber}: categoría de inversión no válida.`);
+      if (!description || !unit) errors.push(`Fila ${rowNumber}: agrega descripción y unidad.`);
+      return {
+        id: makeId("investment"),
+        category,
+        subcategory: row.subcategoria?.trim() ?? "",
+        description,
+        quantity,
+        unit,
+        unitPrice,
+        totalPrice: quantity * unitPrice,
+        date: date || undefined,
+        supplier: row.proveedor?.trim() || undefined,
+      };
+    });
+
+    if (errors.length) {
+      setMessage(`No se importó el archivo. ${errors.slice(0, 3).join(" ")}`);
+      return;
+    }
+
+    updateState({
+      ...state,
+      investments: [...state.investments, ...entries],
+      offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("investments", entry))],
+    });
+    setMessage(`${entries.length} inversiones importadas correctamente.`);
+  }
+
+  return (
+    <Card title="Carga masiva por CSV" icon={FileUp}>
+      <div className="grid gap-4">
+        <p className="soft-panel p-3 text-sm font-semibold text-[var(--muted)]">
+          Solo el perfil de propietario puede descargar plantillas e importar datos. Puedes repetir la carga con archivos nuevos cuando lo necesites.
+        </p>
+        <Field label="Tipo de información">
+          <select className="input" value={kind} onChange={(event) => { setKind(event.target.value as CsvImportKind); setMessage(""); }}>
+            {Object.entries(CSV_IMPORT_TEMPLATES).map(([value, option]) => (
+              <option key={value} value={value}>{option.label}</option>
+            ))}
+          </select>
+        </Field>
+        <div className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--cream)] p-4 text-sm font-semibold text-[var(--muted)]">
+          {template.help}
+          {kind === "investments" ? <p className="mt-2 break-words">Categorías: {CSV_INVESTMENT_CATEGORIES.join(", ")}.</p> : null}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button className="secondary-button flex h-12 items-center justify-center gap-2 px-4" onClick={downloadTemplate} type="button">
+            <Download size={18} />
+            Descargar plantilla CSV
+          </button>
+          <label className="primary-button flex h-12 cursor-pointer items-center justify-center gap-2 px-4">
+            <FileUp size={18} />
+            Subir archivo CSV
+            <input
+              accept=".csv,text/csv"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void importCsv(file);
+                event.target.value = "";
+              }}
+              type="file"
+            />
+          </label>
+        </div>
+        {message ? <p className="soft-panel p-3 text-sm font-bold text-[var(--olive)]" role="status">{message}</p> : null}
+      </div>
+    </Card>
   );
 }
 
