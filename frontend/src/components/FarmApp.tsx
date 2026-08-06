@@ -77,6 +77,7 @@ import {
   normalizeEggSizeBreakdown,
 } from "@/lib/egg-classification";
 import { createFreshFarmState } from "@/lib/farm-state-defaults";
+import { apiUrl } from "@/lib/api";
 import { migrateFarmState } from "@/lib/farm-state-migration";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
 import { csvTemplate, isIsoDate, parseCsv, parseCsvNumber } from "@/lib/csv-import";
@@ -126,7 +127,7 @@ function parseNumericInputValue(value: string) {
 }
 
 async function saveFarmRecord(state: FarmState) {
-  const response = await fetch("/api/farm-state", {
+  const response = await fetch(apiUrl("/api/farm-state"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ state }),
@@ -238,7 +239,7 @@ export default function FarmApp() {
       setLoaded(true);
       setOnline(navigator.onLine);
 
-      fetch("/api/farm-state")
+      fetch(apiUrl("/api/farm-state"))
         .then(async (response) => {
           if (!response.ok) {
             throw new Error("Los datos de la granja aún no están listos.");
@@ -334,7 +335,7 @@ export default function FarmApp() {
     setOwnerLoginPending(true);
 
     try {
-      const response = await fetch("/api/auth/owner", {
+      const response = await fetch(apiUrl("/api/auth/owner"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2858,7 +2859,7 @@ function MoreSection({
   );
 }
 
-type CsvImportKind = "egg_logs" | "feed_usage" | "expenses" | "investments";
+type CsvImportKind = "egg_logs" | "sales" | "feed_usage" | "expenses" | "investments";
 
 const CSV_IMPORT_TEMPLATES: Record<CsvImportKind, { label: string; fileName: string; headers: string[]; help: string }> = {
   egg_logs: {
@@ -2866,6 +2867,12 @@ const CSV_IMPORT_TEMPLATES: Record<CsvImportKind, { label: string; fileName: str
     fileName: "plantilla_recolecciones_huevos.csv",
     headers: ["fecha", "total_huevos", "huevos_quebrados", "kg_alimento_consumido", "vitaminas_agua", "vitaminas_alimento", "nota", "tipo_c", "tipo_b", "tipo_a", "tipo_aa", "tipo_aaa", "tipo_jumbo"],
     help: "Una fila por día. La fecha debe estar en formato AAAA-MM-DD y los tipos no pueden superar los huevos buenos.",
+  },
+  sales: {
+    label: "Ventas de huevos",
+    fileName: "plantilla_ventas_huevos.csv",
+    headers: ["fecha", "cubetas", "tipo_huevo", "valor_por_cubeta_cop", "nombre_cliente", "telefono_cliente", "lugar_compra"],
+    help: "Una fila por venta. Cada cubeta equivale a 30 huevos. Tipos válidos: C, B, A, AA, AAA o Jumbo. El teléfono es opcional.",
   },
   feed_usage: {
     label: "Consumo de alimento",
@@ -2915,6 +2922,15 @@ const CSV_EXPENSE_CATEGORY_ALIASES: Record<string, Expense["category"]> = {
 const CSV_INVESTMENT_CATEGORIES: InvestmentCategory[] = [
   "galpon_construccion", "galpon_materiales_olga", "galpon_materiales_homecenter", "galpon_materiales_laroca", "gallinas_compra", "gallinas_alimento", "gallinas_medicina_vacunas", "gallinas_implementos", "gastos_semanales", "cuidandero", "otros",
 ];
+
+const CSV_SALE_EGG_TYPES: Record<string, EggSizeCategory> = {
+  c: "C",
+  b: "B",
+  a: "A",
+  aa: "AA",
+  aaa: "AAA",
+  jumbo: "Jumbo",
+};
 
 function CsvBulkImportSection({
   state,
@@ -3071,6 +3087,67 @@ function CsvBulkImportSection({
         offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("feed_usage", entry))],
       });
       setMessage(`${entries.length} consumos de alimento importados correctamente.`);
+      return;
+    }
+
+    if (kind === "sales") {
+      const headerError = validateHeaders(rows, ["fecha", "cubetas", "tipo_huevo", "valor_por_cubeta_cop", "nombre_cliente", "lugar_compra"]);
+      if (headerError) {
+        setMessage(headerError);
+        return;
+      }
+
+      const stockByCategory = getEggStockByCategoryData(state);
+      const requestedEggsByType = Object.fromEntries(
+        EGG_SIZE_ORDER.map((type) => [type, 0]),
+      ) as Record<EggSizeCategory, number>;
+      const entries = rows.map((row, index) => {
+        const rowNumber = index + 2;
+        const date = row.fecha?.trim() ?? "";
+        const cartons = numberFromRow(row, "cubetas", rowNumber, errors, { required: true, integer: true, min: 1 });
+        const rawType = row.tipo_huevo?.trim().toLowerCase() ?? "";
+        const cartonType = CSV_SALE_EGG_TYPES[rawType];
+        const pricePerCartonCop = numberFromRow(row, "valor_por_cubeta_cop", rowNumber, errors, { required: true, min: 1 });
+        const customerName = row.nombre_cliente?.trim() ?? "";
+        const customerPhone = row.telefono_cliente?.trim() ?? "";
+        const purchaseLocation = row.lugar_compra?.trim() ?? "";
+
+        if (!isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
+        if (!cartonType) errors.push(`Fila ${rowNumber}: “tipo_huevo” debe ser C, B, A, AA, AAA o Jumbo.`);
+        if (!customerName) errors.push(`Fila ${rowNumber}: agrega el nombre del cliente.`);
+        if (!purchaseLocation) errors.push(`Fila ${rowNumber}: agrega el lugar de compra.`);
+        if (cartonType) requestedEggsByType[cartonType] += cartons * 30;
+
+        return {
+          id: makeId("sale"),
+          date,
+          cartons,
+          cartonType: cartonType ?? "A",
+          pricePerCartonCop,
+          customerName,
+          customerPhone: customerPhone || undefined,
+          purchaseLocation,
+        };
+      });
+
+      for (const type of EGG_SIZE_ORDER) {
+        const available = stockByCategory.rows.find((row) => row.category === type)?.eggs ?? 0;
+        if (requestedEggsByType[type] > available) {
+          errors.push(`No hay suficientes huevos tipo ${type}: se intentan vender ${requestedEggsByType[type]} y hay ${available} disponibles.`);
+        }
+      }
+
+      if (errors.length) {
+        setMessage(`No se importó el archivo. ${errors.slice(0, 3).join(" ")}`);
+        return;
+      }
+
+      updateState({
+        ...state,
+        sales: [...state.sales, ...entries],
+        offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("sales", entry))],
+      });
+      setMessage(`${entries.length} ventas importadas correctamente y el stock fue actualizado.`);
       return;
     }
 

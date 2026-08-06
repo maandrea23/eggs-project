@@ -1,106 +1,44 @@
 # Brianna Eggs Farm Manager
 
-Mobile-first poultry farm management MVP for one small egg farm with COP money tracking, offline daily logging, charts, CSV/PDF exports, and farm data persistence.
+La aplicación está separada en dos servicios TypeScript para conservar una interfaz independiente de la lógica de negocio y la base de datos.
 
-## Run It Locally
-
-1. Open Terminal in this folder:
-
-   ```bash
-   cd "/Users/muendakamara/Desktop/Brianna Egg App"
-   ```
-
-2. Install packages if needed:
-
-   ```bash
-   npm install
-   ```
-
-3. Start the app:
-
-   ```bash
-   npm run dev
-   ```
-
-4. Open this address in your browser:
-
-   [http://localhost:3000](http://localhost:3000)
-
-5. Open **Owner sign in** and enter the owner credentials.
-
-The owner mode saves data in this browser with `localStorage`, so daily egg logs keep working even when the internet is unavailable after the app has loaded.
-
-## Owner Access
-
-Set these variables in Dailey (or in a local `.env.local`) before deploying:
-
-```bash
-OWNER_USERNAME=your-owner-username
-OWNER_PASSWORD=a-strong-unique-password
+```text
+frontend/   Next.js + React (interfaz de usuario)
+backend/    Node.js + Express (API y MySQL)
 ```
 
-For local development only, if those variables are not set, the temporary credentials are `owner` and `brianna2026`. Operator mode does not require a password and can access only the egg collection section.
+## Ejecutar en desarrollo
 
-## What Is Included
+Abre dos terminales desde esta carpeta:
 
-- Owner and operator modes for the internal farm tool.
-- Dashboard for birds, hens, coop capacity, eggs collected, cartons of 30, loose eggs, feed stock, sales, expenses, and profit in COP.
-- Coop management for name, capacity, hens, chicks, deaths, removals, and new birds.
-- Fast daily egg logging for eggs collected, cracked eggs, cartons, loose eggs, and notes.
-- Sales tracking by cartons of 30 with COP totals and optional customer name.
-- Feed purchase, feed usage, and farm expense tracking.
-- Inventory and low-stock alerts.
-- Health records and maintenance reminders.
-- Basic reports with charts, CSV export, and PDF export.
-- Blank starting records so the farm can enter its own production data.
+```bash
+npm --prefix backend install
+npm --prefix backend run dev
+```
 
-## Dailey Database
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev
+```
 
-The app is set up to use Dailey's managed database when deployed.
+El frontend estará en `http://localhost:3000` y la API en `http://localhost:4000`.
 
-1. Dailey should run the project with the `docker-compose.yml` file in this repo.
+Configura `backend/.env` tomando como referencia `backend/.env.example`. Para el frontend, usa `frontend/.env.local` a partir de `frontend/.env.example` si la API no está en `http://localhost:4000`.
 
-2. The `db` service tells Dailey to provision a managed MySQL database for this app.
+## Docker
 
-3. The app reads database credentials from `DATABASE_URL`, `MYSQL_URL`, or standard MySQL environment variables.
+1. Copia `.env.example` como `.env` y cambia las contraseñas.
+2. Inicia los servicios:
 
-4. The app creates its first table automatically:
+```bash
+docker compose up --build
+```
 
-   ```sql
-   farm_state
-   ```
+Docker levanta el frontend en el puerto `3000`, la API en el `4000` y MySQL en el `3306`.
 
-5. For local database testing, copy `.env.example` to `.env.local`:
+## API
 
-   ```bash
-   cp .env.example .env.local
-   ```
-
-6. Add a local MySQL connection string only if you want to test the database API locally:
-
-   ```bash
-   DATABASE_URL=mysql://user:password@localhost:3306/eggs_project
-   ```
-
-7. Restart the local server:
-
-   ```bash
-   npm run dev
-   ```
-
-## Important Notes
-
-- The current MVP keeps an offline copy in the browser for speed and daily farm use.
-- When Dailey database credentials are available, the app mirrors the full farm state into the `farm_state` table.
-- A future version should split the JSON state into normalized tables for coops, egg logs, sales, feed, expenses, inventory, health, and reminders.
-
-## Main Files
-
-- `src/components/FarmApp.tsx` - the mobile-first app UI and local workflows.
-- `src/lib/types.ts` - shared TypeScript data types.
-- `src/lib/farm-state-defaults.ts` - blank starting farm records.
-- `src/lib/calculations.ts` - dashboard, report, alert, and insight calculations.
-- `src/lib/local-store.ts` - offline localStorage persistence.
-- `src/lib/dailey-db.ts` - server-side Dailey MySQL persistence.
-- `src/app/api/farm-state/route.ts` - API route for reading and saving farm state.
-- `docker-compose.yml` - Dailey app plus managed database service.
+- `GET /api/health` — confirma disponibilidad de la API.
+- `POST /api/auth/owner` — valida el usuario y contraseña del propietario.
+- `GET /api/farm-state` — obtiene el estado completo de la granja.
+- `PUT /api/farm-state` — guarda el estado completo de la granja.

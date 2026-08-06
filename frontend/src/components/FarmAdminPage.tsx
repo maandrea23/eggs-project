@@ -78,6 +78,7 @@ import {
   normalizeEggSizeBreakdown,
 } from "@/lib/egg-classification";
 import { createFreshFarmState } from "@/lib/farm-state-defaults";
+import { apiUrl } from "@/lib/api";
 import { loadFarmState, saveFarmState } from "@/lib/local-store";
 import { useThemeMode } from "@/lib/use-theme-mode";
 import InvestmentSection from "@/components/InvestmentSection";
@@ -176,7 +177,7 @@ function formatAdminPieTooltipValue(value: unknown, name: unknown, item: unknown
 }
 
 async function saveFarmRecord(state: FarmState) {
-  const response = await fetch("/api/farm-state", {
+  const response = await fetch(apiUrl("/api/farm-state"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ state }),
@@ -292,7 +293,7 @@ export default function FarmAdminPage() {
     setLoaded(true);
     setOnline(navigator.onLine);
 
-    fetch("/api/farm-state")
+    fetch(apiUrl("/api/farm-state"))
       .then(async (r) => {
         if (!r.ok) throw new Error("Not ready");
         return (await r.json()) as { state: FarmState | null };
