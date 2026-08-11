@@ -84,6 +84,17 @@ export function isIsoDate(value: string) {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+export function parseCsvDate(value: string) {
+  const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, day, month, year] = match;
+  const isoDate = `${year}-${month}-${day}`;
+  return isIsoDate(isoDate) ? isoDate : null;
+}
+
 export function csvTemplate(headers: string[]) {
   return `${headers.join(",")}\n`;
 }

@@ -80,7 +80,7 @@ import { createFreshFarmState } from "@/lib/farm-state-defaults";
 import { apiUrl } from "@/lib/api";
 import { migrateFarmState } from "@/lib/farm-state-migration";
 import { loadFarmState, resetFarmState, saveFarmState } from "@/lib/local-store";
-import { csvTemplate, isIsoDate, parseCsv, parseCsvNumber } from "@/lib/csv-import";
+import { csvTemplate, parseCsv, parseCsvDate, parseCsvNumber } from "@/lib/csv-import";
 import type { ThemeMode } from "@/lib/theme-mode";
 import { useThemeMode } from "@/lib/use-theme-mode";
 import InvestmentSection from "@/components/InvestmentSection";
@@ -3005,25 +3005,25 @@ const CSV_IMPORT_TEMPLATES: Record<CsvImportKind, { label: string; fileName: str
     label: "Recolecciones y clasificación",
     fileName: "plantilla_recolecciones_huevos.csv",
     headers: ["fecha", "total_huevos", "huevos_quebrados", "kg_alimento_consumido", "vitaminas_agua", "vitaminas_alimento", "nota", "tipo_c", "tipo_b", "tipo_a", "tipo_aa", "tipo_aaa", "tipo_jumbo"],
-    help: "Una fila por día. La fecha debe estar en formato AAAA-MM-DD y los tipos no pueden superar los huevos buenos.",
+    help: "Una fila por día. La fecha debe estar en formato DD/MM/AAAA y los tipos no pueden superar los huevos buenos.",
   },
   sales: {
     label: "Ventas de huevos",
     fileName: "plantilla_ventas_huevos.csv",
     headers: ["fecha", "cubetas", "tipo_huevo", "valor_por_cubeta_cop", "nombre_cliente", "telefono_cliente", "lugar_compra"],
-    help: "Una fila por venta. Cada cubeta equivale a 30 huevos. Tipos válidos: C, B, A, AA, AAA o Jumbo. El teléfono es opcional.",
+    help: "Una fila por venta. La fecha debe estar en formato DD/MM/AAAA. Cada cubeta equivale a 30 huevos. Tipos válidos: C, B, A, AA, AAA o Jumbo. El teléfono es opcional.",
   },
   expenses: {
     label: "Gastos",
     fileName: "plantilla_gastos.csv",
     headers: ["fecha", "categoria", "monto_cop", "descripcion"],
-    help: "Categorías válidas: Mantenimiento, Medicina, Vacunas, Cama, Transporte, Mano de obra, Electricidad, Agua, Reparaciones, Empaques o Limpieza.",
+    help: "La fecha debe estar en formato DD/MM/AAAA. Categorías válidas: Cuidandero, Medicina, Dominicales, Mantenimiento, Administración, Anaqueles o Transporte.",
   },
   investments: {
     label: "Inversión inicial",
     fileName: "plantilla_inversion_inicial.csv",
     headers: ["fecha", "categoria", "subcategoria", "descripcion", "cantidad", "unidad", "precio_unitario_cop", "proveedor"],
-    help: "Usa las categorías listadas abajo. El total se calcula automáticamente: cantidad × precio unitario.",
+    help: "La fecha es opcional y debe usar DD/MM/AAAA. Usa las categorías listadas abajo. El total se calcula automáticamente: cantidad × precio unitario.",
   },
 };
 
@@ -3134,7 +3134,8 @@ function CsvBulkImportSection({
       const importedDates = new Set<string>();
       const entries = rows.map((row, index) => {
         const rowNumber = index + 2;
-        const date = row.fecha?.trim() ?? "";
+        const rawDate = row.fecha?.trim() ?? "";
+        const date = parseCsvDate(rawDate);
         const totalEggs = numberFromRow(row, "total_huevos", rowNumber, errors, { required: true, integer: true, min: 1 });
         const crackedEggs = numberFromRow(row, "huevos_quebrados", rowNumber, errors, { required: true, integer: true, min: 0 });
         const feedConsumedKg = numberFromRow(row, "kg_alimento_consumido", rowNumber, errors, { required: true, min: 0.001 });
@@ -3147,15 +3148,15 @@ function CsvBulkImportSection({
           Jumbo: numberFromRow(row, "tipo_jumbo", rowNumber, errors, { integer: true, min: 0 }),
         });
 
-        if (!isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
-        if (existingDates.has(date) || importedDates.has(date)) errors.push(`Fila ${rowNumber}: ya existe una recolección para ${date}.`);
+        if (!date) errors.push(`Fila ${rowNumber}: la fecha debe usar DD/MM/AAAA.`);
+        if (date && (existingDates.has(date) || importedDates.has(date))) errors.push(`Fila ${rowNumber}: ya existe una recolección para ${rawDate}.`);
         if (crackedEggs > totalEggs) errors.push(`Fila ${rowNumber}: los huevos quebrados no pueden superar el total.`);
         if (getEggSizeTotal(sizeBreakdown) > totalEggs - crackedEggs) errors.push(`Fila ${rowNumber}: la clasificación supera los huevos buenos.`);
-        importedDates.add(date);
+        if (date) importedDates.add(date);
 
         return {
           id: makeId("egg"),
-          date,
+          date: date ?? "",
           totalEggs,
           crackedEggs,
           sizeBreakdown,
@@ -3195,7 +3196,8 @@ function CsvBulkImportSection({
       ) as Record<EggSizeCategory, number>;
       const entries = rows.map((row, index) => {
         const rowNumber = index + 2;
-        const date = row.fecha?.trim() ?? "";
+        const rawDate = row.fecha?.trim() ?? "";
+        const date = parseCsvDate(rawDate);
         const cartons = numberFromRow(row, "cubetas", rowNumber, errors, { required: true, integer: true, min: 1 });
         const rawType = row.tipo_huevo?.trim().toLowerCase() ?? "";
         const cartonType = CSV_SALE_EGG_TYPES[rawType];
@@ -3204,7 +3206,7 @@ function CsvBulkImportSection({
         const customerPhone = row.telefono_cliente?.trim() ?? "";
         const purchaseLocation = row.lugar_compra?.trim() ?? "";
 
-        if (!isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
+        if (!date) errors.push(`Fila ${rowNumber}: la fecha debe usar DD/MM/AAAA.`);
         if (!cartonType) errors.push(`Fila ${rowNumber}: “tipo_huevo” debe ser C, B, A, AA, AAA o Jumbo.`);
         if (!customerName) errors.push(`Fila ${rowNumber}: agrega el nombre del cliente.`);
         if (!purchaseLocation) errors.push(`Fila ${rowNumber}: agrega el lugar de compra.`);
@@ -3212,7 +3214,7 @@ function CsvBulkImportSection({
 
         return {
           id: makeId("sale"),
-          date,
+          date: date ?? "",
           cartons,
           cartonType: cartonType ?? "A",
           pricePerCartonCop,
@@ -3252,7 +3254,8 @@ function CsvBulkImportSection({
 
       const entries = rows.map((row, index) => {
         const rowNumber = index + 2;
-        const date = row.fecha?.trim() ?? "";
+        const rawDate = row.fecha?.trim() ?? "";
+        const date = parseCsvDate(rawDate);
         const normalizedCategory = (row.categoria?.trim() ?? "")
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
@@ -3261,10 +3264,10 @@ function CsvBulkImportSection({
         const category = CSV_EXPENSE_CATEGORY_ALIASES[normalizedCategory];
         const amountCop = numberFromRow(row, "monto_cop", rowNumber, errors, { required: true, min: 0.001 });
         const description = row.descripcion?.trim() ?? "";
-        if (!isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
+        if (!date) errors.push(`Fila ${rowNumber}: la fecha debe usar DD/MM/AAAA.`);
         if (!category) errors.push(`Fila ${rowNumber}: categoría de gasto no válida.`);
         if (!description) errors.push(`Fila ${rowNumber}: agrega una descripción.`);
-        return { id: makeId("expense"), date, category: category ?? "maintenance", amountCop, description };
+        return { id: makeId("expense"), date: date ?? "", category: category ?? "maintenance", amountCop, description };
       });
 
       if (errors.length) {
@@ -3289,13 +3292,14 @@ function CsvBulkImportSection({
 
     const entries = rows.map((row, index) => {
       const rowNumber = index + 2;
-      const date = row.fecha?.trim() ?? "";
+      const rawDate = row.fecha?.trim() ?? "";
+      const date = rawDate ? parseCsvDate(rawDate) : null;
       const category = row.categoria?.trim().toLowerCase() as InvestmentCategory;
       const quantity = numberFromRow(row, "cantidad", rowNumber, errors, { required: true, min: 0.001 });
       const unitPrice = numberFromRow(row, "precio_unitario_cop", rowNumber, errors, { required: true, min: 0 });
       const description = row.descripcion?.trim() ?? "";
       const unit = row.unidad?.trim() ?? "";
-      if (date && !isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
+      if (rawDate && !date) errors.push(`Fila ${rowNumber}: la fecha debe usar DD/MM/AAAA.`);
       if (!CSV_INVESTMENT_CATEGORIES.includes(category)) errors.push(`Fila ${rowNumber}: categoría de inversión no válida.`);
       if (!description || !unit) errors.push(`Fila ${rowNumber}: agrega descripción y unidad.`);
       return {
@@ -3307,7 +3311,7 @@ function CsvBulkImportSection({
         unit,
         unitPrice,
         totalPrice: quantity * unitPrice,
-        date: date || undefined,
+        date: date ?? undefined,
         supplier: row.proveedor?.trim() || undefined,
       };
     });
