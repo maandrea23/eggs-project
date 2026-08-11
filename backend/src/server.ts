@@ -1,11 +1,15 @@
 import "dotenv/config";
 import { timingSafeEqual } from "node:crypto";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import { readFarmState, writeFarmState } from "./db.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
+const currentDirectory = dirname(fileURLToPath(import.meta.url));
+const publicDirectory = process.env.PUBLIC_DIR || join(currentDirectory, "..", "public");
 const localDevelopmentOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -74,6 +78,11 @@ app.put("/api/farm-state", async (request, response) => {
   }
 });
 
+app.use(express.static(publicDirectory, { index: "index.html", maxAge: "1h" }));
+app.get("*", (_request, response) => {
+  response.sendFile(join(publicDirectory, "index.html"));
+});
+
 app.listen(port, () => {
-  console.log(`API Brianna Eggs activa en http://localhost:${port}`);
+  console.log(`Brianna Eggs activa en http://localhost:${port}`);
 });

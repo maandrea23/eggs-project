@@ -6,15 +6,6 @@ services:
     ports:
       - "4000:4000"
     environment:
-      BACKEND_URL: http://backend:4000
-      PORT: 4000
-    depends_on:
-      backend:
-        condition: service_started
-
-  backend:
-    build: ./backend
-    environment:
       NODE_ENV: production
       PORT: 4000
       OWNER_USERNAME: ${OWNER_USERNAME}
