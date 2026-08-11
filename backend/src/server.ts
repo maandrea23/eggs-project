@@ -45,7 +45,7 @@ app.post("/api/auth/owner", (request, response) => {
   const username = typeof request.body?.username === "string" ? request.body.username : "";
   const password = typeof request.body?.password === "string" ? request.body.password : "";
   const development = process.env.NODE_ENV !== "production";
-  const ownerUsername = process.env.OWNER_USERNAME || (development ? "owner" : "");
+  const ownerUsername = process.env.OWNER_USERNAME || "owner";
   const ownerPassword = process.env.OWNER_PASSWORD || (development ? "brianna2026" : "");
 
   if (!ownerUsername || !ownerPassword) {
