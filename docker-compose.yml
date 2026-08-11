@@ -3,10 +3,10 @@ services:
     build:
       context: .
       dockerfile: ./frontend/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     ports:
       - "3000:3000"
+    environment:
+      BACKEND_URL: http://backend:4000
     depends_on:
       backend:
         condition: service_started
@@ -21,7 +21,7 @@ services:
       OWNER_USERNAME: ${OWNER_USERNAME}
       OWNER_PASSWORD: ${OWNER_PASSWORD}
       DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/eggs_project
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002}
     depends_on:
       db:
         condition: service_healthy
