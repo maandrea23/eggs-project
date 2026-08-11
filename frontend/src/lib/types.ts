@@ -88,7 +88,11 @@ export type Expense = {
     | "water"
     | "repairs"
     | "packaging"
-    | "cleaning";
+    | "cleaning"
+    | "caretaker"
+    | "sundays"
+    | "administration"
+    | "shelves";
   amountCop: number;
   description: string;
 };

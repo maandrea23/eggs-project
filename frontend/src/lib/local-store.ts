@@ -9,15 +9,14 @@ export function loadFarmState(): FarmState {
     return createFreshFarmState();
   }
 
-  const saved = window.localStorage.getItem(STORAGE_KEY);
-
-  if (!saved) {
-    const freshState = createFreshFarmState();
-    saveFarmState(freshState);
-    return freshState;
-  }
-
   try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (!saved) {
+      const freshState = createFreshFarmState();
+      saveFarmState(freshState);
+      return freshState;
+    }
+
     const migratedState = migrateFarmState(JSON.parse(saved) as FarmState);
     saveFarmState(migratedState);
     return migratedState;
@@ -33,10 +32,14 @@ export function saveFarmState(state: FarmState) {
     return;
   }
 
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(migrateFarmState(state)),
-  );
+  try {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(migrateFarmState(state)),
+    );
+  } catch {
+    // La aplicación continúa usando la base de datos cuando el navegador bloquea el almacenamiento local.
+  }
 }
 
 export function resetFarmState() {

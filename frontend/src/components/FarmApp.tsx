@@ -59,10 +59,10 @@ import {
   formatWeekRange,
   getEggChartData,
   getEggStockByCategoryData,
-  getFeedChartData,
   getReportRows,
   getSalesChartData,
   getWeekId,
+  getWeekRangeFromId,
   getWeeklyData,
   getAllWeeks,
   getDayName,
@@ -152,10 +152,15 @@ const tabs: { id: TabKey; label: string; icon: React.ComponentType<{ size?: numb
     { id: "more", label: "Más", icon: Ellipsis },
   ];
 
-const expenseCategories: Expense["category"][] = [
-  "maintenance", "medicine", "vaccines", "bedding", "transport",
-  "labour", "electricity", "water", "repairs", "packaging", "cleaning",
-];
+const expenseCategories = [
+  "caretaker", "medicine", "sundays", "maintenance", "administration", "shelves", "transport",
+] as const satisfies readonly Expense["category"][];
+
+type ManagedExpenseCategory = (typeof expenseCategories)[number];
+type WeeklyExpenseDraft = Record<
+  ManagedExpenseCategory,
+  { amountCop: number; description: string }
+>;
 
 const expenseCategoryLabels: Record<Expense["category"], string> = {
   maintenance: "Mantenimiento",
@@ -169,6 +174,10 @@ const expenseCategoryLabels: Record<Expense["category"], string> = {
   repairs: "Reparaciones",
   packaging: "Empaques",
   cleaning: "Limpieza",
+  caretaker: "Cuidandero",
+  sundays: "Dominicales",
+  administration: "Administración",
+  shelves: "Anaqueles",
 };
 
 const inventoryCategoryLabels: Record<InventoryItem["category"], string> = {
@@ -290,7 +299,6 @@ export default function FarmApp() {
   const insights = useMemo(() => buildInsights(state), [state]);
   const eggChartData = useMemo(() => getEggChartData(state), [state]);
   const salesChartData = useMemo(() => getSalesChartData(state), [state]);
-  const feedChartData = useMemo(() => getFeedChartData(state), [state]);
   const reportRows = useMemo(() => getReportRows(state), [state]);
 
   function updateState(next: FarmState) {
@@ -656,12 +664,10 @@ export default function FarmApp() {
             ) : null
           ) : null}
           {effectiveTab === "expenses" ? (
-            <FeedExpenseSection
+            <ExpenseSection
               state={state}
               updateState={updateState}
               queueOfflineItem={queueOfflineItem}
-              metrics={metrics}
-              chartData={feedChartData}
             />
           ) : null}
           {effectiveTab === "investment" ? (
@@ -2269,12 +2275,10 @@ function FlockSection({
   );
 }
 
-function FeedExpenseSection({
+function ExpenseSection({
   state,
   updateState,
   queueOfflineItem,
-  metrics,
-  chartData,
 }: {
   state: FarmState;
   updateState: (state: FarmState) => void;
@@ -2282,9 +2286,29 @@ function FeedExpenseSection({
     tableName: OfflineQueueItem["tableName"],
     payload: unknown,
   ) => OfflineQueueItem;
-  metrics: ReturnType<typeof calculateFarmMetrics>;
-  chartData: ReturnType<typeof getFeedChartData>;
 }) {
+  function createWeeklyExpenseDraft(
+    expenses: Expense[] = [],
+  ): WeeklyExpenseDraft {
+    return expenseCategories.reduce((draft, category) => {
+      const entries = expenses.filter((item) => item.category === category);
+      draft[category] = {
+        amountCop: entries.reduce((sum, item) => sum + item.amountCop, 0),
+        description: entries
+          .map((item) => item.description.trim())
+          .filter(Boolean)
+          .join(" · "),
+      };
+      return draft;
+    }, {} as WeeklyExpenseDraft);
+  }
+
+  function isManagedExpenseCategory(
+    category: Expense["category"],
+  ): category is ManagedExpenseCategory {
+    return expenseCategories.includes(category as ManagedExpenseCategory);
+  }
+
   const [purchase, setPurchase] = useState({
     date: todayIso(),
     feedType: "Concentrado para ponedoras",
@@ -2292,17 +2316,23 @@ function FeedExpenseSection({
     priceCop: 0,
     supplier: "",
   });
-  const [usage, setUsage] = useState({
-    date: todayIso(),
-    quantityKg: 0,
-    notes: "",
-  });
-  const [expense, setExpense] = useState({
-    date: todayIso(),
-    category: "maintenance" as Expense["category"],
-    amountCop: 0,
-    description: "",
-  });
+  const [selectedWeek, setSelectedWeek] = useState("");
+  const [expenseDraft, setExpenseDraft] = useState<WeeklyExpenseDraft>(() =>
+    createWeeklyExpenseDraft(),
+  );
+  const [expenseMessage, setExpenseMessage] = useState("");
+  const allWeeks = useMemo(() => getAllWeeks(state), [state]);
+  const selectedWeekData = useMemo(
+    () => (selectedWeek ? getWeeklyData(state, selectedWeek) : null),
+    [state, selectedWeek],
+  );
+  const selectedExpenses = (selectedWeekData?.weeklyCosts ?? [])
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const selectedWeekTotal = selectedExpenses.reduce(
+    (sum, item) => sum + item.amountCop,
+    0,
+  );
 
   function submitPurchase(event: FormEvent) {
     event.preventDefault();
@@ -2319,36 +2349,115 @@ function FeedExpenseSection({
     setPurchase({ date: todayIso(), feedType: "Concentrado para ponedoras", quantityKg: 0, priceCop: 0, supplier: "" });
   }
 
-  function submitUsage(event: FormEvent) {
-    event.preventDefault();
-    const nextUsage = { id: makeId("feed-use"), ...usage };
-    updateState({
-      ...state,
-      feedUsage: [...state.feedUsage, nextUsage],
-      inventoryItems: state.inventoryItems.map((item) =>
-        item.id === "inv-feed"
-          ? { ...item, quantity: Math.max(item.quantity - usage.quantityKg, 0) }
-          : item,
+  function selectExpenseWeek(weekId: string) {
+    setSelectedWeek(weekId);
+    setExpenseMessage("");
+    setExpenseDraft(
+      createWeeklyExpenseDraft(
+        weekId ? getWeeklyData(state, weekId).weeklyCosts : [],
       ),
-      offlineQueue: [...state.offlineQueue, queueOfflineItem("feed_usage", nextUsage)],
-    });
-    setUsage({ date: todayIso(), quantityKg: 0, notes: "" });
+    );
   }
 
-  function submitExpense(event: FormEvent) {
+  function updateExpenseDraft(
+    category: ManagedExpenseCategory,
+    changes: Partial<WeeklyExpenseDraft[ManagedExpenseCategory]>,
+  ) {
+    setExpenseDraft({
+      ...expenseDraft,
+      [category]: { ...expenseDraft[category], ...changes },
+    });
+  }
+
+  function isQueuedExpense(item: OfflineQueueItem, id: string) {
+    return (
+      item.tableName === "expenses" &&
+      typeof item.payload === "object" &&
+      item.payload !== null &&
+      "id" in item.payload &&
+      item.payload.id === id
+    );
+  }
+
+  function saveWeeklyExpenses(event: FormEvent) {
     event.preventDefault();
-    const nextExpense = { id: makeId("expense"), ...expense };
+    if (!selectedWeek) {
+      setExpenseMessage("Selecciona una semana antes de guardar los gastos.");
+      return;
+    }
+
+    const weekExpenses = selectedWeekData?.weeklyCosts ?? [];
+    const managedExpenses = weekExpenses.filter((item) =>
+      isManagedExpenseCategory(item.category),
+    );
+    const existingByCategory = new Map(
+      managedExpenses.map((item) => [item.category, item]),
+    );
+    const expenseDate = format(
+      getWeekRangeFromId(selectedWeek, state.accountingWeekSettings).start,
+      "yyyy-MM-dd",
+    );
+    const nextExpenses = expenseCategories.flatMap((category) => {
+      const draft = expenseDraft[category];
+      if (draft.amountCop <= 0) {
+        return [];
+      }
+
+      return [{
+        id: existingByCategory.get(category)?.id ?? makeId("expense"),
+        date: expenseDate,
+        category,
+        amountCop: draft.amountCop,
+        description: draft.description.trim(),
+      } satisfies Expense];
+    });
+    const managedExpenseIds = new Set(managedExpenses.map((item) => item.id));
+
     updateState({
       ...state,
-      expenses: [...state.expenses, nextExpense],
-      offlineQueue: [...state.offlineQueue, queueOfflineItem("expenses", nextExpense)],
+      expenses: [
+        ...state.expenses.filter((item) => !managedExpenseIds.has(item.id)),
+        ...nextExpenses,
+      ].sort((a, b) => a.date.localeCompare(b.date)),
+      offlineQueue: [
+        ...state.offlineQueue.filter((item) =>
+          !managedExpenses.some((expense) => isQueuedExpense(item, expense.id)),
+        ),
+        ...nextExpenses.map((expense) => queueOfflineItem("expenses", expense)),
+      ],
     });
-    setExpense({ date: todayIso(), category: "maintenance", amountCop: 0, description: "" });
+    setExpenseMessage(
+      nextExpenses.length
+        ? "Los gastos de la semana se guardaron correctamente."
+        : "Se eliminaron los gastos registrados de estas categorías para la semana.",
+    );
   }
+
+  function removeExpense(item: Expense) {
+    if (!window.confirm(`¿Eliminar el gasto de ${expenseCategoryLabels[item.category]}?`)) {
+      return;
+    }
+
+    updateState({
+      ...state,
+      expenses: state.expenses.filter((expenseItem) => expenseItem.id !== item.id),
+      offlineQueue: state.offlineQueue.filter((queuedItem) => !isQueuedExpense(queuedItem, item.id)),
+    });
+    setExpenseDraft(createWeeklyExpenseDraft(selectedExpenses.filter((expenseItem) => expenseItem.id !== item.id)));
+    setExpenseMessage("El gasto fue eliminado.");
+  }
+
+  const selectedWeekRange = selectedWeek
+    ? formatWeekRange(selectedWeek, state.accountingWeekSettings)
+    : "";
+  const weekTotalDraft = expenseCategories.reduce(
+    (sum, category) => sum + expenseDraft[category].amountCop,
+    0,
+  );
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-2">
         <Card title="Compra de alimento" icon={Sprout}>
           <form className="grid gap-4" onSubmit={submitPurchase}>
             <Field label="Fecha">
@@ -2371,92 +2480,122 @@ function FeedExpenseSection({
           </form>
         </Card>
 
-        <Card title="Uso de alimento" icon={Package}>
-          <form className="grid gap-4" onSubmit={submitUsage}>
-            <div className="rounded-3xl bg-[#eef5ef] p-4">
-              <p className="text-sm font-bold text-[#496150]">Stock de alimento</p>
-              <p className="text-4xl font-black">{formatNumber(metrics.feedStockKg)} kg</p>
-              <p className="text-sm font-semibold text-[#496150]">
-                Aproximadamente {metrics.feedDaysRemaining} días disponibles
-              </p>
-            </div>
-            <Field label="Fecha">
-              <input className="input" type="date" value={usage.date}
-                onChange={(e) => setUsage({ ...usage, date: e.target.value })} />
-            </Field>
-            <NumberField label="Cantidad usada en kg" value={usage.quantityKg}
-              onChange={(q) => setUsage({ ...usage, quantityKg: q })} />
-            <Field label="Notas">
-              <input className="input" value={usage.notes}
-                onChange={(e) => setUsage({ ...usage, notes: e.target.value })} />
-            </Field>
-            <button className="primary-button h-13">Guardar uso</button>
-          </form>
-        </Card>
-
-        <Card title="Otro gasto" icon={ReceiptText}>
-          <form className="grid gap-4" onSubmit={submitExpense}>
-            <Field label="Fecha">
-              <input className="input" type="date" value={expense.date}
-                onChange={(e) => setExpense({ ...expense, date: e.target.value })} />
-            </Field>
-            <Field label="Categoría">
-              <select className="input" value={expense.category}
-                onChange={(e) => setExpense({ ...expense, category: e.target.value as Expense["category"] })}>
-                {expenseCategories.map((cat) => (
-                  <option key={cat} value={cat}>{expenseCategoryLabels[cat]}</option>
+        <Card title="Gastos de la semana" icon={ReceiptText}>
+          <form className="grid gap-4" onSubmit={saveWeeklyExpenses}>
+            <Field label="Seleccionar semana">
+              <select
+                className="input"
+                onChange={(event) => selectExpenseWeek(event.target.value)}
+                value={selectedWeek}
+              >
+                <option value="">-- Selecciona una semana --</option>
+                {allWeeks.map((week) => (
+                  <option key={week} value={week}>
+                    {week} ({formatWeekRange(week, state.accountingWeekSettings)})
+                  </option>
                 ))}
               </select>
             </Field>
-            <NumberField label="Valor (COP)" value={expense.amountCop}
-              onChange={(a) => setExpense({ ...expense, amountCop: a })} />
-            <Field label="Descripción">
-              <input className="input" value={expense.description}
-                onChange={(e) => setExpense({ ...expense, description: e.target.value })} />
-            </Field>
-            <button className="primary-button h-13">Guardar gasto</button>
+
+            {selectedWeek ? (
+              <div className="rounded-2xl border border-[var(--line)] bg-[var(--card-soft)] p-3">
+                <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--muted)]">Semana seleccionada</p>
+                <p className="mt-1 text-base font-black text-[var(--forest)]">{selectedWeekRange}</p>
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {expenseCategories.map((category) => {
+                const draft = expenseDraft[category];
+                return (
+                  <article className="rounded-3xl border border-[var(--line)] bg-[var(--card-soft)] p-4" key={category}>
+                    <p className="font-black text-[var(--forest)]">{expenseCategoryLabels[category]}</p>
+                    <label className="mt-3 block">
+                      <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted)]">Valor (COP)</span>
+                      <input
+                        aria-label={`Valor de ${expenseCategoryLabels[category]}`}
+                        className="input mt-2"
+                        inputMode="numeric"
+                        onChange={(event) => updateExpenseDraft(category, {
+                          amountCop: parseNumericInputValue(event.target.value),
+                        })}
+                        onFocus={(event) => event.currentTarget.select()}
+                        pattern="[0-9]*"
+                        type="text"
+                        value={formatNumericInputValue(draft.amountCop)}
+                      />
+                    </label>
+                    <label className="mt-3 block">
+                      <span className="text-xs font-black uppercase tracking-[0.1em] text-[var(--muted)]">Nota (opcional)</span>
+                      <input
+                        aria-label={`Nota de ${expenseCategoryLabels[category]}`}
+                        className="input mt-2"
+                        onChange={(event) => updateExpenseDraft(category, { description: event.target.value })}
+                        placeholder="Detalle del gasto"
+                        value={draft.description}
+                      />
+                    </label>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="rounded-2xl bg-[var(--cream)] p-4">
+              <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--muted)]">Total a guardar</p>
+              <p className="mt-1 text-2xl font-black text-[var(--forest)]">{formatCop(weekTotalDraft)}</p>
+            </div>
+            {expenseMessage ? (
+              <p className="rounded-2xl bg-[var(--cream)] px-4 py-3 text-sm font-bold text-[var(--olive)]">{expenseMessage}</p>
+            ) : null}
+            <button className="primary-button h-13 disabled:cursor-not-allowed disabled:opacity-50" disabled={!selectedWeek} type="submit">
+              <Save size={20} /> Guardar todos los gastos
+            </button>
           </form>
         </Card>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card title="Movimiento de alimento (kg)" icon={BarChart3}>
-          <div className="h-64">
-            {chartData.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 8" stroke="var(--line)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted)" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} />
-                  <Tooltip formatter={formatChartTooltipValue} />
-                  <Bar dataKey="purchasedKg" fill="var(--base-moss)" radius={[12, 12, 0, 0]} />
-                  <Bar dataKey="usedKg" fill="var(--base-clay)" radius={[12, 12, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <ChartEmpty label="Aún no hay movimientos de alimento registrados." />
-            )}
+      <Card title="Buscar y editar gastos por semana" icon={ReceiptText}>
+        {selectedWeekData ? (
+          <div className="grid gap-4">
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div className="soft-panel p-4">
+                <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--muted)]">{selectedWeek}</p>
+                <p className="mt-1 text-base font-black text-[var(--forest)]">{selectedWeekRange}</p>
+              </div>
+            <div className="rounded-2xl bg-[var(--cream)] px-5 py-3 text-center md:min-w-52">
+              <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--muted)]">Total semanal</p>
+              <p className="mt-1 text-xl font-black text-[var(--forest)]">{formatCop(selectedWeekTotal)}</p>
+            </div>
           </div>
-        </Card>
-
-        <Card title="Tendencia de gasto en alimento" icon={Wallet}>
-          <div className="h-64">
-            {chartData.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 8" stroke="var(--line)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted)" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} />
-                  <Tooltip formatter={formatChartTooltipValue} />
-                  <Area type="monotone" dataKey="spendCop" stroke="var(--base-harvest)" fill="var(--base-harvest)" fillOpacity={0.28} />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <ChartEmpty label="Aún no hay gastos de alimento para mostrar." />
-            )}
+          <p className="text-sm font-semibold text-[var(--muted)]">Edita cualquier categoría arriba y presiona “Guardar todos los gastos”.</p>
+          <DataBoxList
+            emptyLabel="No hay gastos registrados en esta semana."
+            rows={selectedExpenses.map((item) => ({
+              id: item.id,
+              fields: [
+                { label: "Categoría", value: expenseCategoryLabels[item.category] },
+                { label: "Valor", value: formatCop(item.amountCop) },
+                { label: "Descripción", value: item.description || "Sin descripción" },
+                {
+                  label: "Acciones",
+                  value: (
+                    <div className="flex flex-wrap gap-2">
+                      <button className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100" onClick={() => removeExpense(item)} type="button">
+                        <Trash2 size={14} /> Eliminar
+                      </button>
+                    </div>
+                  ),
+                },
+              ],
+            }))}
+          />
           </div>
-        </Card>
-      </section>
+        ) : (
+          <div className="soft-panel p-5 text-center text-sm font-bold text-[var(--muted)]">
+            Selecciona una semana arriba para buscar o editar sus gastos.
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -2859,7 +2998,7 @@ function MoreSection({
   );
 }
 
-type CsvImportKind = "egg_logs" | "sales" | "feed_usage" | "expenses" | "investments";
+type CsvImportKind = "egg_logs" | "sales" | "expenses" | "investments";
 
 const CSV_IMPORT_TEMPLATES: Record<CsvImportKind, { label: string; fileName: string; headers: string[]; help: string }> = {
   egg_logs: {
@@ -2873,12 +3012,6 @@ const CSV_IMPORT_TEMPLATES: Record<CsvImportKind, { label: string; fileName: str
     fileName: "plantilla_ventas_huevos.csv",
     headers: ["fecha", "cubetas", "tipo_huevo", "valor_por_cubeta_cop", "nombre_cliente", "telefono_cliente", "lugar_compra"],
     help: "Una fila por venta. Cada cubeta equivale a 30 huevos. Tipos válidos: C, B, A, AA, AAA o Jumbo. El teléfono es opcional.",
-  },
-  feed_usage: {
-    label: "Consumo de alimento",
-    fileName: "plantilla_consumo_alimento.csv",
-    headers: ["fecha", "kg_consumidos", "notas"],
-    help: "Puedes registrar un consumo diario o el total de una semana con la fecha de cierre de esa semana.",
   },
   expenses: {
     label: "Gastos",
@@ -2899,24 +3032,16 @@ const CSV_EXPENSE_CATEGORY_ALIASES: Record<string, Expense["category"]> = {
   mantenimiento: "maintenance",
   medicine: "medicine",
   medicina: "medicine",
-  vaccines: "vaccines",
-  vacunas: "vaccines",
-  bedding: "bedding",
-  cama: "bedding",
   transport: "transport",
   transporte: "transport",
-  labour: "labour",
-  mano_de_obra: "labour",
-  electricity: "electricity",
-  electricidad: "electricity",
-  water: "water",
-  agua: "water",
-  repairs: "repairs",
-  reparaciones: "repairs",
-  packaging: "packaging",
-  empaques: "packaging",
-  cleaning: "cleaning",
-  limpieza: "cleaning",
+  caretaker: "caretaker",
+  cuidandero: "caretaker",
+  sundays: "sundays",
+  dominicales: "sundays",
+  administration: "administration",
+  administracion: "administration",
+  shelves: "shelves",
+  anaqueles: "shelves",
 };
 
 const CSV_INVESTMENT_CATEGORIES: InvestmentCategory[] = [
@@ -3054,39 +3179,6 @@ function CsvBulkImportSection({
         offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("egg_logs", entry))],
       });
       setMessage(`${entries.length} recolecciones importadas correctamente.`);
-      return;
-    }
-
-    if (kind === "feed_usage") {
-      const headerError = validateHeaders(rows, ["fecha", "kg_consumidos"]);
-      if (headerError) {
-        setMessage(headerError);
-        return;
-      }
-
-      const entries = rows.map((row, index) => {
-        const rowNumber = index + 2;
-        const date = row.fecha?.trim() ?? "";
-        const quantityKg = numberFromRow(row, "kg_consumidos", rowNumber, errors, { required: true, min: 0.001 });
-        if (!isIsoDate(date)) errors.push(`Fila ${rowNumber}: la fecha debe usar AAAA-MM-DD.`);
-        return { id: makeId("feed-use"), date, quantityKg, notes: row.notas?.trim() || undefined };
-      });
-
-      if (errors.length) {
-        setMessage(`No se importó el archivo. ${errors.slice(0, 3).join(" ")}`);
-        return;
-      }
-
-      const consumedKg = entries.reduce((sum, entry) => sum + entry.quantityKg, 0);
-      updateState({
-        ...state,
-        feedUsage: [...state.feedUsage, ...entries],
-        inventoryItems: state.inventoryItems.map((item) =>
-          item.id === "inv-feed" ? { ...item, quantity: Math.max(item.quantity - consumedKg, 0) } : item,
-        ),
-        offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("feed_usage", entry))],
-      });
-      setMessage(`${entries.length} consumos de alimento importados correctamente.`);
       return;
     }
 

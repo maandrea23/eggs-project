@@ -200,15 +200,11 @@ export function calculateFarmMetrics(state: FarmState) {
     (sum, item) => sum + item.quantityKg,
     0,
   );
-  const feedUsages = state.feedUsage.reduce(
-    (sum, item) => sum + item.quantityKg,
-    0,
-  );
   const feedFromEggLogs = state.eggLogs.reduce(
     (sum, log) => sum + (log.feedConsumedKg || 0),
     0,
   );
-  const feedUsedKg = feedUsages + feedFromEggLogs;
+  const feedUsedKg = feedFromEggLogs;
   const feedStockKg = Math.max(feedPurchasedKg - feedUsedKg, 0);
   const monthlySales = state.sales
     .filter((sale) => isDateInCurrentMonth(sale.date))
@@ -795,7 +791,6 @@ export function getAllWeeks(state: FarmState): string[] {
     ...state.eggLogs.map((log) => log.date),
     ...state.sales.map((sale) => sale.date),
     ...state.feedPurchases.map((purchase) => purchase.date),
-    ...state.feedUsage.map((usage) => usage.date),
     ...state.expenses.map((expense) => expense.date),
     ...state.healthRecords.map((record) => record.date),
     ...state.flockArrivals.map((arrival) => arrival.date),
@@ -836,15 +831,11 @@ export function getWeeklyEggCostBreakdown(state: FarmState, weekId: string) {
   const averageFeedCostPerKg = totalFeedPurchasedKg
     ? totalFeedSpend / totalFeedPurchasedKg
     : 0;
-  const explicitWeeklyFeedKg = state.feedUsage
-    .filter((usage) => isDateInSelectedWeek(usage.date))
-    .reduce((sum, usage) => sum + usage.quantityKg, 0);
   const dailyLogFeedKg = weeklyLogs.reduce(
     (sum, log) => sum + (log.feedConsumedKg || 0),
     0,
   );
-  const feedConsumedKg =
-    explicitWeeklyFeedKg > 0 ? explicitWeeklyFeedKg : dailyLogFeedKg;
+  const feedConsumedKg = dailyLogFeedKg;
   const feedCostCop = feedConsumedKg * averageFeedCostPerKg;
   const operatingExpensesCop = state.expenses
     .filter((expense) => isDateInSelectedWeek(expense.date))
