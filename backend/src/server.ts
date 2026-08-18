@@ -16,15 +16,20 @@ const localDevelopmentOrigins = [
   "http://localhost:3002",
   "http://127.0.0.1:3002",
   "https://eggs-project.dailey.cloud",
-].join(",");
-const allowedOrigins = (process.env.CORS_ORIGINS || localDevelopmentOrigins)
+];
+const configuredOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/$/, ""))
   .filter(Boolean);
+const allowedOrigins = new Set([...localDevelopmentOrigins, ...configuredOrigins]);
+
+function originIsAllowed(origin: string) {
+  return allowedOrigins.has(origin.replace(/\/$/, ""));
+}
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    if (!origin || originIsAllowed(origin)) return callback(null, true);
     return callback(new Error("Origen no permitido."));
   },
   methods: ["GET", "POST", "PUT", "OPTIONS"],
