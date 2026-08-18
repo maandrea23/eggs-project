@@ -15,6 +15,7 @@ const localDevelopmentOrigins = [
   "http://127.0.0.1:3000",
   "http://localhost:3002",
   "http://127.0.0.1:3002",
+  "https://eggs-project.dailey.cloud",
 ].join(",");
 const allowedOrigins = (process.env.CORS_ORIGINS || localDevelopmentOrigins)
   .split(",")
@@ -83,6 +84,6 @@ app.get("*", (_request, response) => {
   response.sendFile(join(publicDirectory, "index.html"));
 });
 
-app.listen(port, () => {
+app.listen(port, "0.0.0.0", () => {
   console.log(`Brianna Eggs activa en http://localhost:${port}`);
 });
