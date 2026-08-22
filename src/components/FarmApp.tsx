@@ -3132,12 +3132,15 @@ function CsvBulkImportSection({
 
       const existingDates = new Set(state.eggLogs.map((log) => log.date));
       const importedDates = new Set<string>();
+      const reconciledRows: number[] = [];
       const entries = rows.map((row, index) => {
         const rowNumber = index + 2;
         const rawDate = row.fecha?.trim() ?? "";
         const date = parseCsvDate(rawDate);
-        const totalEggs = numberFromRow(row, "total_huevos", rowNumber, errors, { required: true, integer: true, min: 1 });
-        const crackedEggs = numberFromRow(row, "huevos_quebrados", rowNumber, errors, { required: true, integer: true, min: 0 });
+        // Los campos vacíos significan que ese día no hubo huevos o quebrados.
+        // Es el formato que generan las plantillas de recolección de la granja.
+        const totalEggs = numberFromRow(row, "total_huevos", rowNumber, errors, { integer: true, min: 0 });
+        const crackedEggs = numberFromRow(row, "huevos_quebrados", rowNumber, errors, { integer: true, min: 0 });
         const feedConsumedKg = numberFromRow(row, "kg_alimento_consumido", rowNumber, errors, { required: true, min: 0.001 });
         const sizeBreakdown = normalizeEggSizeBreakdown({
           C: numberFromRow(row, "tipo_c", rowNumber, errors, { integer: true, min: 0 }),
@@ -3147,17 +3150,19 @@ function CsvBulkImportSection({
           AAA: numberFromRow(row, "tipo_aaa", rowNumber, errors, { integer: true, min: 0 }),
           Jumbo: numberFromRow(row, "tipo_jumbo", rowNumber, errors, { integer: true, min: 0 }),
         });
+        const classifiedEggs = getEggSizeTotal(sizeBreakdown);
+        const reconciledTotalEggs = Math.max(totalEggs, crackedEggs + classifiedEggs);
 
         if (!date) errors.push(`Fila ${rowNumber}: la fecha debe usar DD/MM/AAAA.`);
         if (date && (existingDates.has(date) || importedDates.has(date))) errors.push(`Fila ${rowNumber}: ya existe una recolección para ${rawDate}.`);
         if (crackedEggs > totalEggs) errors.push(`Fila ${rowNumber}: los huevos quebrados no pueden superar el total.`);
-        if (getEggSizeTotal(sizeBreakdown) > totalEggs - crackedEggs) errors.push(`Fila ${rowNumber}: la clasificación supera los huevos buenos.`);
+        if (classifiedEggs > totalEggs - crackedEggs) reconciledRows.push(rowNumber);
         if (date) importedDates.add(date);
 
         return {
           id: makeId("egg"),
           date: date ?? "",
-          totalEggs,
+          totalEggs: reconciledTotalEggs,
           crackedEggs,
           sizeBreakdown,
           feedConsumedKg,
@@ -3179,7 +3184,13 @@ function CsvBulkImportSection({
         eggLogs: [...state.eggLogs, ...entries].sort((a, b) => a.date.localeCompare(b.date)),
         offlineQueue: [...state.offlineQueue, ...entries.map((entry) => queueOfflineItem("egg_logs", entry))],
       });
-      setMessage(`${entries.length} recolecciones importadas correctamente.`);
+      setMessage(
+        `${entries.length} recolecciones importadas correctamente.${
+          reconciledRows.length
+            ? ` Se ajustó el total de la fila ${reconciledRows.join(", ")} para conservar su clasificación y sus huevos quebrados.`
+            : ""
+        }`,
+      );
       return;
     }
 
