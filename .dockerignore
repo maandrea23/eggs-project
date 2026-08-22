@@ -1,7 +1,6 @@
 .git
 .next
-frontend/.next
-frontend/out
+out
 node_modules
 npm-debug.log
 .env
