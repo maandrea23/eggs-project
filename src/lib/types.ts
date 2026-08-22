@@ -19,6 +19,8 @@ export type AccountingWeekSettings = {
 
 export type EggSizeCategory = "C" | "B" | "A" | "AA" | "AAA" | "Jumbo";
 
+export type EggSaleCategory = EggSizeCategory | "Sin clasificar";
+
 export type EggTrayType = "B" | "A" | "AA" | "AAA";
 
 export type EggSizeBreakdown = Record<EggSizeCategory, number>;
@@ -51,7 +53,7 @@ export type Sale = {
   id: string;
   date: string;
   cartons: number;
-  cartonType?: EggSizeCategory;
+  cartonType?: EggSaleCategory;
   pricePerCartonCop: number;
   customerName?: string;
   customerPhone?: string;

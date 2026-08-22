@@ -7,6 +7,7 @@ import type {
   AccountingWeekSettings,
   EggSizeBreakdown,
   EggSizeCategory,
+  EggSaleCategory,
   FarmState,
 } from "./types";
 
@@ -54,7 +55,7 @@ function parseSizeBreakdownFromNotes(notes?: string) {
   return getEggSizeTotal(normalized) > 0 ? normalized : undefined;
 }
 
-function parseSaleCategory(customerName?: string) {
+function parseSaleCategory(customerName?: string): EggSaleCategory | undefined {
   const normalized = String(customerName ?? "").toLowerCase();
 
   if (normalized.includes("jumbo")) {
@@ -83,7 +84,7 @@ function buildBreakdownByDateFromSales(state: FarmState) {
 
     const category = parseSaleCategory(sale.customerName);
 
-    if (!category) {
+    if (!category || category === "Sin clasificar") {
       continue;
     }
 
@@ -112,7 +113,10 @@ export function migrateFarmState(state: FarmState): FarmState {
     ...withDefaults,
     sales: (withDefaults.sales ?? []).map((sale) => ({
       ...sale,
-      cartonType: (sale as any).cartonType ?? parseSaleCategory(sale.customerName),
+      cartonType:
+        (sale as any).cartonType ??
+        parseSaleCategory(sale.customerName) ??
+        "Sin clasificar",
       customerPhone: (sale as any).customerPhone,
       purchaseLocation: (sale as any).purchaseLocation,
     })),

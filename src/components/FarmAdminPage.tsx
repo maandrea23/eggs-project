@@ -87,6 +87,7 @@ import type {
   FarmState,
   HealthRecord,
   InventoryItem,
+  EggSaleCategory,
   EggSizeCategory,
 } from "@/lib/types";
 
@@ -150,13 +151,14 @@ const adminChartMetricLabels: Record<string, string> = {
   usedKg: "Used kg",
 };
 
-const eggCategoryColors: Record<EggSizeCategory, string> = {
+const eggCategoryColors: Record<EggSaleCategory, string> = {
   C: "#c9a167",
   B: "#d8aa56",
   A: "#e7bf68",
   AA: "#8e9f70",
   AAA: "#5f8660",
   Jumbo: "#315f42",
+  "Sin clasificar": "#8b8b82",
 };
 
 function formatAdminChartTooltipValue(value: unknown, name: unknown) {

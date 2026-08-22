@@ -29,6 +29,12 @@ import type {
 } from "./types";
 
 export const CARTON_SIZE = 30;
+export const UNCLASSIFIED_EGG_CATEGORY = "Sin clasificar" as const;
+export type EggStockCategory = EggSizeCategory | typeof UNCLASSIFIED_EGG_CATEGORY;
+export const EGG_STOCK_ORDER: EggStockCategory[] = [
+  ...EGG_SIZE_ORDER,
+  UNCLASSIFIED_EGG_CATEGORY,
+];
 export const DEFAULT_ACCOUNTING_WEEK_SETTINGS: AccountingWeekSettings = {
   startDate: "2026-06-02",
   startWeek: 17,
@@ -159,6 +165,16 @@ function getCategorySalesTotals(state: FarmState) {
   return totals;
 }
 
+function getUnclassifiedSalesTotal(state: FarmState) {
+  return state.sales.reduce(
+    (sum, sale) =>
+      sale.cartonType === UNCLASSIFIED_EGG_CATEGORY
+        ? sum + sale.cartons * CARTON_SIZE
+        : sum,
+    0,
+  );
+}
+
 export function getMonthRange(date = new Date()) {
   return {
     start: startOfMonth(date),
@@ -272,71 +288,33 @@ export function getEggStockByCategoryData(state: FarmState) {
     normalizeEggSizeBreakdown(),
   );
   const categorySalesTotals = getCategorySalesTotals(state);
-  const categorySalesTotal = getEggSizeTotal(categorySalesTotals);
   const goodEggsCollected = state.eggLogs.reduce(
     (sum, log) => sum + getGoodEggs(log),
     0,
   );
-  const eggsSold = state.sales.reduce(
-    (sum, sale) => sum + sale.cartons * CARTON_SIZE,
+  const categorizedCollected = getEggSizeTotal(categoryTotals);
+  const stockByCategory = EGG_SIZE_ORDER.reduce((totals, category) => {
+    totals[category] = Math.max(
+      Math.round(categoryTotals[category] - categorySalesTotals[category]),
+      0,
+    );
+    return totals;
+  }, normalizeEggSizeBreakdown());
+  const categorizedAvailable = getEggSizeTotal(stockByCategory);
+  const unclassifiedCollected = Math.max(
+    goodEggsCollected - categorizedCollected,
     0,
   );
-  const categorizedCollected = getEggSizeTotal(categoryTotals);
-  const stockByCategory: EggSizeBreakdown =
-    categorySalesTotal > 0
-      ? EGG_SIZE_ORDER.reduce((totals, category) => {
-          totals[category] = Math.max(
-            Math.round(categoryTotals[category] - categorySalesTotals[category]),
-            0,
-          );
-          return totals;
-        }, normalizeEggSizeBreakdown())
-      : (() => {
-          const eggsAvailable = Math.max(goodEggsCollected - eggsSold, 0);
-          const stockRatio = goodEggsCollected
-            ? eggsAvailable / goodEggsCollected
-            : 0;
-          const categorizedAvailable = Math.min(
-            eggsAvailable,
-            Math.round(categorizedCollected * stockRatio),
-          );
-          const rawCategoryRows = EGG_SIZE_ORDER.map((category) => {
-            const rawEggs = categoryTotals[category] * stockRatio;
+  const uncategorizedAvailable = Math.max(
+    unclassifiedCollected - getUnclassifiedSalesTotal(state),
+    0,
+  );
+  const eggsAvailable = categorizedAvailable + uncategorizedAvailable;
 
-            return {
-              category,
-              eggs: Math.floor(rawEggs),
-              remainder: rawEggs % 1,
-            };
-          });
-          let eggsToDistribute =
-            categorizedAvailable -
-            rawCategoryRows.reduce((sum, row) => sum + row.eggs, 0);
-          const totals = normalizeEggSizeBreakdown();
-
-          [...rawCategoryRows]
-            .sort((a, b) => b.remainder - a.remainder)
-            .forEach((row) => {
-              if (eggsToDistribute > 0) {
-                row.eggs += 1;
-                eggsToDistribute -= 1;
-              }
-            });
-
-          rawCategoryRows.forEach((row) => {
-            totals[row.category] = row.eggs;
-          });
-
-          return totals;
-        })();
-  const categorizedAvailable = getEggSizeTotal(stockByCategory);
-  const eggsAvailable =
-    categorySalesTotal > 0
-      ? categorizedAvailable
-      : Math.max(goodEggsCollected - eggsSold, 0);
-
-  const rows = EGG_SIZE_ORDER.map((category) => {
-    const eggs = stockByCategory[category];
+  const rows = EGG_STOCK_ORDER.map((category) => {
+    const eggs = category === UNCLASSIFIED_EGG_CATEGORY
+      ? uncategorizedAvailable
+      : stockByCategory[category];
 
     return {
       category,
@@ -353,8 +331,8 @@ export function getEggStockByCategoryData(state: FarmState) {
     rows,
     eggsAvailable,
     categorizedAvailable,
-    uncategorizedAvailable: Math.max(eggsAvailable - categorizedAvailable, 0),
-    hasCategoryData: categorizedCollected > 0,
+    uncategorizedAvailable,
+    hasCategoryData: categorizedCollected > 0 || unclassifiedCollected > 0,
   };
 }
 

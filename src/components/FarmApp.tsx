@@ -69,6 +69,7 @@ import {
   getCostPerEggByWeek,
   getWeeklyEggCostBreakdown,
   normalizeAccountingWeekSettings,
+  UNCLASSIFIED_EGG_CATEGORY,
 } from "@/lib/calculations";
 import {
   EGG_SIZE_ORDER,
@@ -90,6 +91,7 @@ import type {
   HealthRecord,
   InvestmentCategory,
   OfflineQueueItem,
+  EggSaleCategory,
   EggSizeCategory,
   FarmNotification,
   FlockArrival,
@@ -201,13 +203,14 @@ const chartMetricLabels: Record<string, string> = {
   usedKg: "Kg utilizados",
 };
 
-const eggCategoryColors: Record<EggSizeCategory, string> = {
+const eggCategoryColors: Record<EggSaleCategory, string> = {
   C: "#c9a167",
   B: "#d8aa56",
   A: "#e7bf68",
   AA: "#8e9f70",
   AAA: "#5f8660",
   Jumbo: "#315f42",
+  "Sin clasificar": "#8b8b82",
 };
 
 function formatChartTooltipValue(value: unknown, name: unknown) {
@@ -1318,6 +1321,7 @@ function EggLoggingSection({
               <MiniTotal label="Disponibles" value={stockByCategory.eggsAvailable} />
               <MiniTotal label="Cubetas" value={Math.floor(stockByCategory.eggsAvailable / 30)} />
               <MiniTotal label="Clasificados" value={stockByCategory.categorizedAvailable} />
+              <MiniTotal label="Sin clasificar" value={stockByCategory.uncategorizedAvailable} />
               <MiniTotal label="Sueltos" value={stockByCategory.eggsAvailable % 30} />
             </div>
 
@@ -1350,10 +1354,10 @@ function EggLoggingSection({
 
             <div>
               <p className="mb-2 text-sm font-black text-[var(--olive)]">
-                Stock clasificado por tipo
+                Stock por tipo de huevo
               </p>
               <p className="mb-3 text-xs font-semibold text-[var(--muted)]">
-                Cada total se actualiza cuando clasificas el registro diario y disminuye al vender ese tipo de huevo.
+                Los huevos clasificados se agrupan por tamaño. Los que aún no clasificas quedan disponibles en “Sin clasificar” y también se pueden vender por cubetas.
               </p>
             </div>
             <div className="grid gap-2 text-sm font-bold text-[var(--muted)]">
@@ -1723,7 +1727,7 @@ function SalesSection({
   const [form, setForm] = useState<{
     date: string;
     cartons: number;
-    cartonType: EggSizeCategory;
+    cartonType: EggSaleCategory;
     pricePerCartonCop: number;
     customerName: string;
     customerPhone: string;
@@ -1824,7 +1828,7 @@ function SalesSection({
 
     if (form.cartons > cartonsAvailableForType) {
       setSaleMessage(
-        `Solo hay ${cartonsAvailableForType} cubetas de huevo tipo ${form.cartonType} disponibles. Clasifica más huevos para aumentar este stock.`,
+        `Solo hay ${cartonsAvailableForType} cubetas de huevo ${form.cartonType.toLowerCase()} disponibles.`,
       );
       return;
     }
@@ -1906,7 +1910,7 @@ function SalesSection({
                 className="input"
                 value={form.cartonType}
                 onChange={(event) =>
-                  setForm({ ...form, cartonType: event.target.value as EggSizeCategory })
+                  setForm({ ...form, cartonType: event.target.value as EggSaleCategory })
                 }
               >
                 {EGG_SIZE_ORDER.map((category) => (
@@ -1914,10 +1918,13 @@ function SalesSection({
                     {category}
                   </option>
                 ))}
+                <option value={UNCLASSIFIED_EGG_CATEGORY}>
+                  Sin clasificar
+                </option>
               </select>
             </Field>
             <div className="soft-panel p-3 text-sm font-bold text-[var(--olive)]">
-              Stock de tipo {form.cartonType}: {formatNumber(selectedCategoryStock?.eggs ?? 0)} huevos disponibles
+              Stock de {form.cartonType.toLowerCase()}: {formatNumber(selectedCategoryStock?.eggs ?? 0)} huevos disponibles
               <span className="ml-2 text-[var(--muted)]">({cartonsAvailableForType} cubetas y {selectedCategoryStock?.loose ?? 0} sueltos)</span>
             </div>
             <Field label="Nombre del cliente">
@@ -3011,7 +3018,7 @@ const CSV_IMPORT_TEMPLATES: Record<CsvImportKind, { label: string; fileName: str
     label: "Ventas de huevos",
     fileName: "plantilla_ventas_huevos.csv",
     headers: ["fecha", "cubetas", "tipo_huevo", "valor_por_cubeta_cop", "nombre_cliente", "telefono_cliente", "lugar_compra"],
-    help: "Una fila por venta. La fecha debe estar en formato DD/MM/AAAA. Cada cubeta equivale a 30 huevos. Tipos válidos: C, B, A, AA, AAA o Jumbo. El teléfono es opcional.",
+    help: "Una fila por venta. La fecha debe estar en formato DD/MM/AAAA. Cada cubeta equivale a 30 huevos. Tipos válidos: C, B, A, AA, AAA, Jumbo o Sin clasificar. El teléfono es opcional.",
   },
   expenses: {
     label: "Gastos",
@@ -3048,13 +3055,16 @@ const CSV_INVESTMENT_CATEGORIES: InvestmentCategory[] = [
   "galpon_construccion", "galpon_materiales_olga", "galpon_materiales_homecenter", "galpon_materiales_laroca", "gallinas_compra", "gallinas_alimento", "gallinas_medicina_vacunas", "gallinas_implementos", "gastos_semanales", "cuidandero", "otros",
 ];
 
-const CSV_SALE_EGG_TYPES: Record<string, EggSizeCategory> = {
+const CSV_SALE_EGG_TYPES: Record<string, EggSaleCategory> = {
   c: "C",
   b: "B",
   a: "A",
   aa: "AA",
   aaa: "AAA",
   jumbo: "Jumbo",
+  "sin clasificar": "Sin clasificar",
+  sin_clasificar: "Sin clasificar",
+  sinclasificar: "Sin clasificar",
 };
 
 function CsvBulkImportSection({
@@ -3203,8 +3213,8 @@ function CsvBulkImportSection({
 
       const stockByCategory = getEggStockByCategoryData(state);
       const requestedEggsByType = Object.fromEntries(
-        EGG_SIZE_ORDER.map((type) => [type, 0]),
-      ) as Record<EggSizeCategory, number>;
+        [...EGG_SIZE_ORDER, UNCLASSIFIED_EGG_CATEGORY].map((type) => [type, 0]),
+      ) as Record<EggSaleCategory, number>;
       const entries = rows.map((row, index) => {
         const rowNumber = index + 2;
         const rawDate = row.fecha?.trim() ?? "";
@@ -3218,7 +3228,7 @@ function CsvBulkImportSection({
         const purchaseLocation = row.lugar_compra?.trim() ?? "";
 
         if (!date) errors.push(`Fila ${rowNumber}: la fecha debe usar DD/MM/AAAA.`);
-        if (!cartonType) errors.push(`Fila ${rowNumber}: “tipo_huevo” debe ser C, B, A, AA, AAA o Jumbo.`);
+        if (!cartonType) errors.push(`Fila ${rowNumber}: “tipo_huevo” debe ser C, B, A, AA, AAA, Jumbo o Sin clasificar.`);
         if (!customerName) errors.push(`Fila ${rowNumber}: agrega el nombre del cliente.`);
         if (!purchaseLocation) errors.push(`Fila ${rowNumber}: agrega el lugar de compra.`);
         if (cartonType) requestedEggsByType[cartonType] += cartons * 30;
@@ -3235,7 +3245,7 @@ function CsvBulkImportSection({
         };
       });
 
-      for (const type of EGG_SIZE_ORDER) {
+      for (const type of [...EGG_SIZE_ORDER, UNCLASSIFIED_EGG_CATEGORY]) {
         const available = stockByCategory.rows.find((row) => row.category === type)?.eggs ?? 0;
         if (requestedEggsByType[type] > available) {
           errors.push(`No hay suficientes huevos tipo ${type}: se intentan vender ${requestedEggsByType[type]} y hay ${available} disponibles.`);
