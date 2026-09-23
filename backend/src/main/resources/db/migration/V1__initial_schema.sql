@@ -1,0 +1,64 @@
+CREATE TABLE app_user (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(80) NOT NULL UNIQUE,
+  password_hash VARCHAR(100) NOT NULL,
+  role VARCHAR(20) NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE egg_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  log_date DATE NOT NULL UNIQUE,
+  total_eggs INT NOT NULL,
+  cracked_eggs INT NOT NULL DEFAULT 0,
+  feed_consumed_kg DECIMAL(10,2) NOT NULL,
+  vitamin_in_water VARCHAR(255),
+  vitamin_in_feed VARCHAR(255),
+  notes TEXT,
+  type_c INT NOT NULL DEFAULT 0,
+  type_b INT NOT NULL DEFAULT 0,
+  type_a INT NOT NULL DEFAULT 0,
+  type_aa INT NOT NULL DEFAULT 0,
+  type_aaa INT NOT NULL DEFAULT 0,
+  type_jumbo INT NOT NULL DEFAULT 0,
+  created_by BIGINT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_egg_log_user FOREIGN KEY (created_by) REFERENCES app_user(id)
+);
+
+CREATE TABLE egg_sale (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  sale_date DATE NOT NULL,
+  cartons INT NOT NULL,
+  carton_type VARCHAR(30) NOT NULL,
+  price_per_carton_cop DECIMAL(14,2) NOT NULL,
+  customer_name VARCHAR(160) NOT NULL,
+  customer_phone VARCHAR(50),
+  purchase_location VARCHAR(160) NOT NULL,
+  created_by BIGINT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_egg_sale_user FOREIGN KEY (created_by) REFERENCES app_user(id)
+);
+
+CREATE TABLE expense (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  expense_date DATE NOT NULL,
+  category VARCHAR(40) NOT NULL,
+  amount_cop DECIMAL(14,2) NOT NULL,
+  description VARCHAR(500) NOT NULL,
+  created_by BIGINT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_expense_user FOREIGN KEY (created_by) REFERENCES app_user(id)
+);
+
+CREATE TABLE audit_event (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  actor_username VARCHAR(80) NOT NULL,
+  action VARCHAR(80) NOT NULL,
+  entity_type VARCHAR(80) NOT NULL,
+  entity_id VARCHAR(80),
+  detail TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

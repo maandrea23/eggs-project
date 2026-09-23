@@ -1,0 +1,44 @@
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: brianna_eggs
+      MYSQL_ROOT_PASSWORD: brianna_local_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - brianna_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pbrianna_local_password"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    environment:
+      DB_URL: jdbc:mysql://db:3306/brianna_eggs?serverTimezone=UTC
+      DB_USERNAME: root
+      DB_PASSWORD: brianna_local_password
+      OWNER_USERNAME: owner
+      OWNER_PASSWORD: cambia-esta-contrasena-local
+      JWT_SECRET: cambia-esta-clave-jwt-por-una-de-al-menos-32-caracteres
+      CORS_ALLOWED_ORIGINS: http://localhost:4200
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    command: npm start -- --host 0.0.0.0 --proxy-config proxy.docker.conf.json
+    ports:
+      - "4200:4200"
+    depends_on:
+      - backend
+
+volumes:
+  brianna_mysql:

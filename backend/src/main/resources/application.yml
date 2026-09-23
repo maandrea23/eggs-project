@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: brianna-eggs-api
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/brianna_eggs?createDatabaseIfNotExist=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+server:
+  port: ${PORT:8080}
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:replace-this-with-a-32-character-secret-for-production}
+    access-token-minutes: ${JWT_ACCESS_TOKEN_MINUTES:480}
+  bootstrap:
+    owner-username: ${OWNER_USERNAME:owner}
+    owner-password: ${OWNER_PASSWORD:change-this-owner-password}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
